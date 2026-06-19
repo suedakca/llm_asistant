@@ -19,33 +19,29 @@ class ProjectLogger:
             "sonuc_mesaji": result
         }
         try:
-            with open(self.filename, "r", encoding="utf-8") as f:
-                logs = json.load(f)
+            with open(self.filename, "r", encoding="utf-8") as f: logs = json.load(f)
             logs.append(log_entry)
-            with open(self.filename, "w", encoding="utf-8") as f:
-                json.dump(logs, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            print(f"[LOG HATASI] Kayıt yapılamadı: {e}")
+            with open(self.filename, "w", encoding="utf-8") as f: json.dump(logs, f, ensure_ascii=False, indent=4)
+        except Exception as e: print(f"Loglama hatası: {e}")
 
     def print_session_summary(self, final_telemetry):
-        """ Oturum sonu özetini ekrana şık bir şekilde basar """
+        """ 2. OTURUM SONU ÖZETİ RAPORLAYICI """
         try:
-            with open(self.filename, "r", encoding="utf-8") as f:
-                logs = json.load(f)
+            with open(self.filename, "r", encoding="utf-8") as f: logs = json.load(f)
             
-            total_commands = len(logs)
-            approved_commands = sum(1 for log in logs if log["guvenlik_onayi"] == True)
-            rejected_commands = total_commands - approved_commands
+            total = len(logs)
+            approved = sum(1 for log in logs if log["guvenlik_onayi"] == True)
+            rejected = total - approved
 
             print("\n" + "="*50)
             print("📊 === MİSYON SONU UÇUŞ ÖZET RAPORU ===")
             print("="*50)
-            print(f"🔹 Toplam Gönderilen Komut : {total_commands}")
-            print(f"✅ Onaylanan Eylemler     : {approved_commands}")
-            print(f"❌ Reddedilen Güvensiz    : {rejected_commands}")
+            print(f"🔹 Toplam Gönderilen Komut : {total}")
+            print(f"✅ Onaylanan Eylemler     : {approved}")
+            print(f"❌ Reddedilen Güvensiz    : {rejected}")
             print(f"📈 Ulaşılan Son İrtifa    : {final_telemetry['altitude']}m")
-            print(f"📍 Son Koordinatlar       : (X: {final_telemetry['x']}, Y: {final_telemetry['y']})")
+            print(f"📍 Son Konum Koordinatı   : (X: {final_telemetry['x']}, Y: {final_telemetry['y']})")
             print(f"🔋 Kalan Batarya Seviyesi : %{final_telemetry['battery']}")
             print("="*50 + "\n")
         except Exception as e:
-            print(f"Özet rapor oluşturulurken hata: {e}")
+            print(f"Özet raporlama hatası: {e}")

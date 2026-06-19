@@ -8,3 +8,8 @@ drone_settings:
 llm_settings:
   model_name: "gemini-2.0-flash"
   temperature: 0.1
+  # Gözlemci LLM'i yoracak yüksek riskli eylemler
+  high_risk_actions: ["takeoff", "move"]
+
+safety_settings:
+  emergency_keywords: ["ABORT", "MOTORU KES", "ACİL DURDURMA", "STOP"]
