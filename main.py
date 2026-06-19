@@ -14,7 +14,7 @@ def main():
     except Exception as e:
         print(f"Config yüklenemedi: {e}"); return
 
-    drone = Drone()
+    drone = Drone(config["drone_settings"]) 
     security = SecurityLayer(config["drone_settings"])
     logger = ProjectLogger()
 

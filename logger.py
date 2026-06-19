@@ -7,12 +7,10 @@ class ProjectLogger:
     def __init__(self, filename="uclus_loglari.json"):
         self.filename = filename
         
-        # [DÜZELTME] Eski format çakışmasını önleyen otomatik temizleme mekanizması
         if os.path.exists(self.filename):
             try:
                 with open(self.filename, "r", encoding="utf-8") as f:
                     first_char = f.read(1)
-                # Eğer dosya eski JSON Array formatındaysa ([) sıfırla
                 if first_char == "[":
                     print("⚠️ [SİSTEM] Eski log formatı algılandı. Dosya JSONLines formatına sıfırlanıyor...")
                     os.remove(self.filename)
@@ -35,17 +33,31 @@ class ProjectLogger:
             print(f"[LOG HATASI] Yazma başarısız: {e}")
 
     def print_session_summary(self, session_id, final_telemetry):
+        """ [DÜZELTME] Sadece son durumu değil, loglardan ulaşılan EN YÜKSEK İRTİFAYI hesaplar """
         try:
             session_logs = []
+            max_altitude_reached = 0.0 
+
             if os.path.exists(self.filename):
                 with open(self.filename, "r", encoding="utf-8") as f:
                     for line in f:
                         if line.strip():
-                            # Çakışma korumalı satır satır okuma
                             try:
                                 log_data = json.loads(line.strip())
                                 if log_data.get("session_id") == str(session_id):
                                     session_logs.append(log_data)
+
+                                    llm_yorumu = log_data.get("llm_yorumu", {})
+                                    if (llm_yorumu.get("action") == "takeoff" and 
+                                        log_data.get("guvenlik_onayi") is True and 
+                                        llm_yorumu.get("parameter") is not None):
+                                        
+                                        try:
+                                            current_param_alt = float(llm_yorumu["parameter"])
+                                            if current_param_alt > max_altitude_reached:
+                                                max_altitude_reached = current_param_alt
+                                        except ValueError:
+                                            pass
                             except json.JSONDecodeError:
                                 continue
             
@@ -60,7 +72,8 @@ class ProjectLogger:
             print(f"🔹 Bu Oturumdaki Komutlar  : {total}")
             print(f"✅ Onaylanan Eylemler     : {approved}")
             print(f"❌ Reddedilen Güvensiz    : {rejected}")
-            print(f"📈 Ulaşılan Son İrtifa    : {final_telemetry['altitude']}m")
+            print(f"📈 Ulaşılan En Yüksek İrtifa: {max_altitude_reached}m ") 
+            print(f"📉 Kapanış Anındaki İrtifa : {final_telemetry['altitude']}m")
             print(f"📍 Son Konum Koordinatı   : (X: {final_telemetry['x']}, Y: {final_telemetry['y']})")
             print(f"🔋 Kalan Batarya Seviyesi : %{final_telemetry['battery']}")
             print("="*50 + "\n")

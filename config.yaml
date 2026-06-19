@@ -4,12 +4,12 @@ drone_settings:
   low_battery_max_altitude: 20.0
   critical_battery: 20
   geofence_boundary: 50.0
+  battery_drain_per_second: 0.5
 
 llm_settings:
   model_name: "gemini-2.0-flash"
   temperature: 0.1
-  # Gözlemci LLM'i yoracak yüksek riskli eylemler
-  high_risk_actions: ["takeoff", "move"]
+  high_risk_actions: ["takeoff", "move", "set_home"]
 
 safety_settings:
   emergency_keywords: ["ABORT", "MOTORU KES", "ACİL DURDURMA", "STOP"]

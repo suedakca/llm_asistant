@@ -26,7 +26,14 @@ class PilotAssistant:
         - Örnek: Drone 15m'de ise ve pilot '10 metre daha yüksel' dediyse, parametre 25 olmalıdır.
         
         DESTEKLENEN FONKSİYONLAR (action):
-        1. 'get_telemetry', 2. 'takeoff', 3. 'land', 4. 'return_to_home', 5. 'move', 6. 'reboot', 7. 'invalid'/'ambiguous'.
+        1. 'get_telemetry', 
+        2. 'takeoff', 
+        3. 'land', 
+        4. 'return_to_home', 
+        5. 'move': Yatay hareket. 'parameter' olarak bir obje alır: {"direction": "kuzey/güney/doğu/batı", "distance": sayı},
+        6. 'reboot': Sistem kilitlendiğinde veya failsafe moduna girdiğinde yeniden başlatmak için kullanılır. Parametre almaz,
+        7. 'set_home': Yeni ev/başlangıç konumu tanımlar. 'parameter' olarak bir obje alır: {"x": sayı, "y": sayı},
+        8. 'invalid' / 'ambiguous': Geçersiz veya belirsiz durumlar.
         
         SADECE JSON FORMATINDA CEVAP VER:
         {"action": "fonksiyon_adı", "parameter": değer_veya_null}

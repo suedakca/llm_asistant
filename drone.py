@@ -2,7 +2,7 @@
 import time
 
 class Drone:
-    def __init__(self):
+    def __init__(self, drone_config=None):
         self.x = 0.0          
         self.y = 0.0          
         self.altitude = 0.0   
@@ -13,17 +13,20 @@ class Drone:
         self.home_y = 0.0
         self.takeoff_time = None 
         self.failsafe_active = False
+        
+        if drone_config and "battery_drain_per_second" in drone_config:
+            self.drain_rate = float(drone_config["battery_drain_per_second"])
+        else:
+            self.drain_rate = 0.5 
 
     def _update_battery_consumption(self):
-        """ Batarya %0'a düştüğünde otomatik motor keser """
         if self.in_air and self.takeoff_time is not None:
             gecen_sure = time.time() - self.takeoff_time
-            zaman_tuketimi = int(gecen_sure * 0.5) 
+            zaman_tuketimi = int(gecen_sure * self.drain_rate) 
             if zaman_tuketimi > 0:
                 self.battery = max(0, self.battery - zaman_tuketimi)
                 self.takeoff_time = time.time()
                 
-                # Batarya tamamen bittiyse anında Failsafe moduna gir
                 if self.battery <= 0 and not self.failsafe_active:
                     print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] BATARYA %0! MOTOR KESİLDİ!")
                     self.emergency_stop()
@@ -40,12 +43,21 @@ class Drone:
             "failsafe": self.failsafe_active
         }
 
+    def set_home(self, new_x, new_y):
+        """ [DÜZELTME 1] Pilotun yeni kalkış/ev noktası belirlemesini sağlar """
+        if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
+        if self.in_air: return "Hata: Havada iken ev konumu (Home) değiştirilemez! Önce inmeniz gerekir."
+        
+        self.home_x = float(new_x)
+        self.home_y = float(new_y)
+        return f"Başarılı: Yeni ev konumu (Home) ayarlandı -> (X: {self.home_x}, Y: {self.home_y})"
+
     def emergency_stop(self):
         self.failsafe_active = True
         self.altitude = 0.0
         self.in_air = False
         self.mode = "EMERGENCY_LAND"
-        return "🚨🚨🚨 [FAILSAFE AKTİF] Motor kesildi! İHA yere indirildi ve sistem kilitlendi."
+        return "[FAILSAFE AKTİF] Motor kesildi! İHA yere indirildi ve sistem kilitlendi."
 
     def reboot(self):
         if self.in_air:
@@ -53,10 +65,11 @@ class Drone:
         self.failsafe_active = False
         self.mode = "DISARMED"
         self.battery = 100 
-        return "🔄 Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı."
+        return "Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı."
 
     def takeoff(self, target_altitude):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
+        
         if self.in_air:
             self.altitude = target_altitude
             return f"Başarılı: İrtifa {target_altitude} metreye güncellendi."
@@ -67,28 +80,41 @@ class Drone:
         self.battery = max(0, self.battery - 5) 
         self.takeoff_time = time.time() 
         return f"Başarılı: {target_altitude} metreye ilk kalkış yapıldı."
-    
+
     def land(self):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         self._update_battery_consumption()
+        self.battery = max(0, self.battery - 3)
         self.altitude = 0.0
         self.in_air = False 
         self.mode = "LAND" 
         self.takeoff_time = None 
+        
+        if self.battery <= 0 and not self.failsafe_active:
+            print("\n[KRİTİK GÜVENLİK SİSTEMİ] İNİŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
+            self.emergency_stop()
+            return "Başarılı: İniş gerçekleştirildi ancak batarya tamamen tükendi (Motor Kesildi)."
+            
         return "Başarılı: İniş gerçekleştirildi."
 
     def return_to_home(self):
-        """ [DÜZELTME] RTH artık drone'u sadece haritada taşımıyor, güvenli şekilde yere indiriyor """
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         self._update_battery_consumption()
+
+        self.battery = max(0, self.battery - 10) 
         
         self.x = self.home_x
         self.y = self.home_y
-        self.altitude = 0.0  # Güvenle yere indi
-        self.in_air = False  # Artık havada değil
+        self.altitude = 0.0  
+        self.in_air = False  
         self.mode = "RTL_LAND"
-        self.battery = max(0, self.battery - 10) 
         self.takeoff_time = None
+
+        if self.battery <= 0 and not self.failsafe_active:
+            print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] EVE DÖNÜŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
+            self.emergency_stop()
+            return f"Başarılı: Başlangıç konumuna dönüldü ({self.x}, {self.y}) ancak batarya tamamen tükendi (Sistem Kilitlendi)."
+
         return f"Başarılı: Başlangıç konumuna dönüldü ({self.x}, {self.y}) ve güvenli iniş tamamlandı."
 
     def move(self, direction, distance):
