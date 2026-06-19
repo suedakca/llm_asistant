@@ -12,6 +12,8 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
 fig.canvas.manager.set_window_title("İHA Otonom Görev Takip Radarı")
 
 def animate(i):
+    home_x = 0.0
+    home_y = 0.0
     x_coords = [0.0]  # Başlangıç (Home) noktası
     y_coords = [0.0]
     last_status = "DISARMED"
@@ -53,15 +55,28 @@ def animate(i):
                 # [DÜZELTME] Sabit 10m yerine pilotun gerçek girdi mesafesini alıyoruz
                 distance = float(parameter.get("distance", 0))
                 
-                if direction in ["kuzey", "north", "yukarı", "ileri"]: current_y += distance
-                elif direction in ["güney", "south", "aşağı", "geri"]: current_y -= distance
+                if direction in ["kuzey", "north", "ileri"]: current_y += distance
+                elif direction in ["güney", "south", "geri"]: current_y -= distance
                 elif direction in ["doğu", "east", "sağ"]: current_x += distance
                 elif direction in ["batı", "west", "sol"]: current_x -= distance
             except (ValueError, TypeError):
                 pass  # Mesafe sayıya çevrilemezse güvenli geçiş
 
+        elif guvenlik_onayi and action == "set_home" and isinstance(parameter, dict):
+            try:
+                home_x = float(parameter.get("x", 0.0))
+                home_y = float(parameter.get("y", 0.0))
+                # İlk konum güncellemesi (İHA yerdeyken ev konumu değiştiği için anlık konum da yeni ev konumuyla güncellenir)
+                current_x, current_y = home_x, home_y
+                # Rota başlangıcını da güncelle
+                if len(x_coords) == 1:
+                    x_coords = [home_x]
+                    y_coords = [home_y]
+            except (ValueError, TypeError):
+                pass
+
         elif guvenlik_onayi and action == "return_to_home":
-            current_x, current_y = 0.0, 0.0  # Drone evine döndü
+            current_x, current_y = home_x, home_y  # Drone evine döndü
 
         # Rota geçmişini güncelle
         x_coords.append(current_x)
@@ -81,7 +96,7 @@ def animate(i):
     # Sol Grafik: 2B Yatay Hareket Haritası (X / Y)
     ax1.clear()
     ax1.plot(x_coords, y_coords, color="green", linestyle="--", marker="o", markersize=4, label="Uçuş Rotası")
-    ax1.scatter([0], [0], color="red", s=100, marker="H", label="Kalkış Noktası (Home)") 
+    ax1.scatter([home_x], [home_y], color="red", s=100, marker="H", label="Kalkış Noktası (Home)") 
     if x_coords:
         ax1.scatter([x_coords[-1]], [y_coords[-1]], color="blue", s=120, marker="^", label="Anlık İHA Konumu") 
     
@@ -104,7 +119,8 @@ def animate(i):
     ax2.text(0.1, 0.6, f"🔸 Uçuş Durumu  : {last_status}", fontsize=12)
     ax2.text(0.1, 0.5, f"📍 Anlık Konum  : (X: {cx}m, Y: {cy}m)", fontsize=12)
     ax2.text(0.1, 0.4, f"🛡️ Geofence Sınır: ±50 Metre", fontsize=12, color="red" if (abs(cx)>40 or abs(cy)>40) else "black")
-    ax2.text(0.1, 0.2, f"🆔 Aktif Oturum : {active_session_id[:8]}...", fontsize=10, color="gray")
+    sid_display = (active_session_id[:8] + "...") if active_session_id else "N/A"
+    ax2.text(0.1, 0.2, f"🆔 Aktif Oturum : {sid_display}", fontsize=10, color="gray")
 
 # Animasyonu başlat
 ani = FuncAnimation(fig, animate, interval=1000, cache_frame_data=False)

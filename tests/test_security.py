@@ -104,3 +104,19 @@ def test_failsafe_lock_blocks_everything(drone, security_layer):
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
     assert onay is False
     assert "Failsafe modunda kilitli" in mesaj
+
+
+# === 6. TEST: EV KONUMU (SET_HOME) GÜVENLİK TESTLERİ ===
+def test_set_home_blocked_in_air(drone, security_layer):
+    """ Havada iken ev konumunun değiştirilmesinin engellendiğini doğrular """
+    drone.in_air = True
+    onay, mesaj = security_layer.validate_and_execute(drone, "set_home", {"x": 10, "y": 10})
+    assert onay is False
+    assert "Havada iken ev konumu değiştirilemez" in mesaj
+
+def test_set_home_blocked_outside_geofence(drone, security_layer):
+    """ Geofence sınırları dışına ev konumu atanmasının engellendiğini doğrular """
+    drone.in_air = False
+    onay, mesaj = security_layer.validate_and_execute(drone, "set_home", {"x": 60, "y": 10}) # Limit: 50.0
+    assert onay is False
+    assert "sınırlarının" in mesaj and "dışındadır" in mesaj

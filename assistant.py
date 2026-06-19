@@ -30,7 +30,7 @@ class PilotAssistant:
         2. 'takeoff', 
         3. 'land', 
         4. 'return_to_home', 
-        5. 'move': Yatay hareket. 'parameter' olarak bir obje alır: {"direction": "kuzey/güney/doğu/batı", "distance": sayı},
+        5. 'move': Yatay hareket. 'parameter' olarak bir obje alır: {"direction": "kuzey/güney/doğu/batı/ileri/geri/sağ/sol", "distance": sayı}. NOT: "yukarı" ve "aşağı" dikey harekettir, 'move' değil 'takeoff' ile yönetilir,
         6. 'reboot': Sistem kilitlendiğinde veya failsafe moduna girdiğinde yeniden başlatmak için kullanılır. Parametre almaz,
         7. 'set_home': Yeni ev/başlangıç konumu tanımlar. 'parameter' olarak bir obje alır: {"x": sayı, "y": sayı},
         8. 'invalid' / 'ambiguous': Geçersiz veya belirsiz durumlar.

@@ -54,8 +54,8 @@ class SecurityLayer:
             target_x, target_y = telemetri["x"], telemetri["y"]
             direct = parameter["direction"].lower()
             
-            if direct in ["kuzey", "north", "yukarı", "ileri"]: target_y += dist
-            elif direct in ["güney", "south", "aşağı", "geri"]: target_y -= dist
+            if direct in ["kuzey", "north", "ileri"]: target_y += dist
+            elif direct in ["güney", "south", "geri"]: target_y -= dist
             elif direct in ["doğu", "east", "sağ"]: target_x += dist
             elif direct in ["batı", "west", "sol"]: target_x -= dist
 
