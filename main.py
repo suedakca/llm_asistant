@@ -1,41 +1,63 @@
 # main.py
-
-# 1. drone.py dosyasındaki Drone sınıfını bu dosyaya çağırıyoruz (import)
 from drone import Drone
+from security import SecurityLayer
 
 def main():
-    print("=== İHA Pilot Asistanı Simülasyonu Başlatıldı ===")
+    print("=== İNSANSI GÜVENLİK KATMANI TESTLERİ BAŞLADI ===\n")
     
-    # 2. Drone nesnemizi üretiyoruz
-    asistan_dronu = Drone()
-    
-    # 3. Telemetriyi kontrol fonksiyonu (Kod tekrarını önlemek için)
-    def durumu_goster():
-        telemetri = asistan_dronu.get_telemetry()
-        print(f"[TELEMETRİ] İrtifa: {telemetri['altitude']}m | Mod: {telemetri['mode']} | Batarya: %{telemetri['battery']} | Havada mı?: {telemetri['in_air']}")
+    # Drone ve Güvenlik nesnelerini oluşturuyoruz
+    drone_asistani = Drone()
+    guvenlik_duvari = SecurityLayer(max_altitude=50.0, min_battery=20)
 
-    # İlk durumu görelim
-    durumu_goster()
-    print("-" * 50)
+    # Telemetriyi ekrana basan yardımcı fonksiyon
+    def anlik_durum():
+        t = drone_asistani.get_telemetry()
+        print(f"   [DRONE DURUMU] İrtifa: {t['altitude']}m | Batarya: %{t['battery']} | Havada: {t['in_air']}")
 
-    # 4. Drone'a komutlar gönderiyoruz
-    print("Komut: 15 metreye kalkış yap.")
-    sonuc = asistan_dronu.takeoff(15)
-    print(f"Sistem Yanıtı: {sonuc}")
-    durumu_goster()
-    print("-" * 50)
+    # -------------------------------------------------------------
+    # TEST 1: Doğru ve Güvenli Kalkış Komutu
+    # -------------------------------------------------------------
+    print("TEST 1: '15 metreye kalkış yap' komutu gönderiliyor...")
+    onay, mesaj = guvenlik_duvari.validate_and_execute(drone_asistani, "takeoff", 15)
+    print(f"-> Güvenlik Onayı: {onay} | Sonuç: {mesaj}")
+    anlik_durum()
+    print("-" * 60)
 
-    print("Komut: Eve geri dön.")
-    sonuc = asistan_dronu.return_to_home()
-    print(f"Sistem Yanıtı: {sonuc}")
-    durumu_goster()
-    print("-" * 50)
+    # -------------------------------------------------------------
+    # TEST 2: Güvensiz Komut (Maksimum İrtifa Sınırını Aşma)
+    # -------------------------------------------------------------
+    print("TEST 2: '80 metreye kalkış yap' komutu gönderiliyor (Sınır: 50m)...")
+    onay, mesaj = guvenlik_duvari.validate_and_execute(drone_asistani, "takeoff", 80)
+    print(f"-> Güvenlik Onayı: {onay} | Sonuç: {mesaj}")
+    anlik_durum()
+    print("-" * 60)
 
-    print("Komut: İniş yap.")
-    sonuc = asistan_dronu.land()
-    print(f"Sistem Yanıtı: {sonuc}")
-    durumu_goster()
-    print("================================================")
+    # -------------------------------------------------------------
+    # TEST 3: Geçersiz Parametre (Negatif İrtifa)
+    # -------------------------------------------------------------
+    print("TEST 3: '-10 metreye git' komutu gönderiliyor...")
+    onay, mesaj = guvenlik_duvari.validate_and_execute(drone_asistani, "takeoff", -10)
+    print(f"-> Güvenlik Onayı: {onay} | Sonuç: {mesaj}")
+    anlik_durum()
+    print("-" * 60)
+
+    # -------------------------------------------------------------
+    # TEST 4: Tanımsız/Hatalı Fonksiyon İsteyi
+    # -------------------------------------------------------------
+    print("TEST 4: 'motorlari_sonsuza_kadar_yak' komutu gönderiliyor...")
+    onay, mesaj = guvenlik_duvari.validate_and_execute(drone_asistani, "motorlari_sonsuza_kadar_yak")
+    print(f"-> Güvenlik Onayı: {onay} | Sonuç: {mesaj}")
+    anlik_durum()
+    print("-" * 60)
+
+    # -------------------------------------------------------------
+    # TEST 5: Başarılı İniş Komutu
+    # -------------------------------------------------------------
+    print("TEST 5: 'iniş yap' komutu gönderiliyor...")
+    onay, mesaj = guvenlik_duvari.validate_and_execute(drone_asistani, "land")
+    print(f"-> Güvenlik Onayı: {onay} | Sonuç: {mesaj}")
+    anlik_durum()
+    print("\n=== TÜM GÜVENLİK TESTLERİ TAMAMLANDI ===")
 
 if __name__ == "__main__":
     main()
