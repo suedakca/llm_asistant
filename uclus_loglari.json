@@ -38,5 +38,25 @@
         },
         "guvenlik_onayi": true,
         "sonuc_mesaji": "Hata: Araç zaten havada!"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:02:50",
+        "kullanici_komutu": "30 metre kalkış yap",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 30
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: 30.0 metreye kalkış yapıldı. Mod: GUIDED"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:02:56",
+        "kullanici_komutu": "50 metre daha kalkış yap",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 50
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "GÜVENLİK REDDİ: Mevcut irtifa 30.0m. Üzerine 50.0m eklenirse güvenli sınır (50.0m) aşılıyor! İstenen toplam: 80.0m."
     }
 ]
