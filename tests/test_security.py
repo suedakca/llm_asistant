@@ -21,7 +21,6 @@ def security_layer(mock_config):
 @pytest.fixture
 def drone(mock_config):
     """ Testler için temiz bir drone nesnesi oluşturur """
-    # drone_settings olarak mock_config'in aynısını paslıyoruz (katsayı dahil edilebilir)
     cfg = mock_config.copy()
     cfg["battery_drain_per_second"] = 0.5
     return Drone(cfg)
@@ -33,7 +32,6 @@ def test_geofence_within_bounds(drone, security_layer):
     drone.in_air = True
     drone.altitude = 10.0
     
-    # Merkezden Doğuya 40 metre (Sınır 50)
     onay, mesaj = security_layer.validate_and_execute(drone, "move", {"direction": "doğu", "distance": 40})
     assert onay is True
     assert drone.x == 40.0
@@ -44,17 +42,16 @@ def test_geofence_violation(drone, security_layer):
     drone.altitude = 10.0
     drone.x = 40.0
     
-    # 40m konumundayken 15m daha Doğuya gitmek X=55 yapar ve Geofence'i deler
     onay, mesaj = security_layer.validate_and_execute(drone, "move", {"direction": "doğu", "distance": 15})
     assert onay is False
     assert "GEOFENCE İHLALİ" in mesaj
-    assert drone.x == 40.0  # Konumun değişmediğini doğrula (Defensive)
+    assert drone.x == 40.0
 
 
 # === 2. TEST: KRİTİK BATARYA KORUMA TESTLERİ ===
 def test_takeoff_blocked_at_critical_battery(drone, security_layer):
     """ Kritik batarya eşiğinin altındayken (%20) kalkışın kesinlikle engellendiğini doğrular """
-    drone.battery = 15  # Kritik eşik %20
+    drone.battery = 15 
     
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
     assert onay is False
@@ -83,11 +80,9 @@ def test_altitude_limit_at_low_battery(drone, security_layer):
     """ Batarya %50'nin altına düşünce irtifa sınırının dinamik olarak daraldığını doğrular """
     drone.battery = 45  
     
-    # 25 metreye kalkış isteği 20m sınırına takılmalı ve reddedilmeli
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 25)
     
     assert onay is False
-    # [DÜZELTME] security.py içindeki gerçek string ifadesiyle senkronize edildi
     assert "sınırı aşmaktadır" in mesaj or "limit" in mesaj
 
 
@@ -104,7 +99,7 @@ def test_move_action_blocked_on_ground(drone, security_layer):
 # === 5. TEST: ACİL DURDURMA (FAILSAFE) KİLİTLENME TESTİ ===
 def test_failsafe_lock_blocks_everything(drone, security_layer):
     """ Sistem bir kez Failsafe moduna girdiğinde hiçbir komutun işlenemediğini doğrular """
-    drone.emergency_stop()  # Sistemi kilitledik
+    drone.emergency_stop()
     
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
     assert onay is False
