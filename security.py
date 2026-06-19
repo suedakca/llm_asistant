@@ -53,7 +53,16 @@ class SecurityLayer:
             
             target_x, target_y = telemetri["x"], telemetri["y"]
             direct = parameter["direction"].lower()
-            
+
+            VALID_DIRECTIONS = {
+                "kuzey", "north", "ileri",
+                "güney", "south", "geri",
+                "doğu", "east", "sağ",
+                "batı", "west", "sol",
+            }
+            if direct not in VALID_DIRECTIONS:
+                return True, f"Geçersiz yön: '{direct}'. Desteklenen yönler: kuzey, güney, doğu, batı."
+
             if direct in ["kuzey", "north", "ileri"]: target_y += dist
             elif direct in ["güney", "south", "geri"]: target_y -= dist
             elif direct in ["doğu", "east", "sağ"]: target_x += dist

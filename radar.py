@@ -66,12 +66,6 @@ def animate(i):
             try:
                 home_x = float(parameter.get("x", 0.0))
                 home_y = float(parameter.get("y", 0.0))
-                # İlk konum güncellemesi (İHA yerdeyken ev konumu değiştiği için anlık konum da yeni ev konumuyla güncellenir)
-                current_x, current_y = home_x, home_y
-                # Rota başlangıcını da güncelle
-                if len(x_coords) == 1:
-                    x_coords = [home_x]
-                    y_coords = [home_y]
             except (ValueError, TypeError):
                 pass
 
