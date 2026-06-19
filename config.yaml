@@ -1,0 +1,10 @@
+# config.yaml
+drone_settings:
+  base_max_altitude: 50.0
+  low_battery_max_altitude: 20.0
+  critical_battery: 20
+  geofence_boundary: 50.0
+
+llm_settings:
+  model_name: "gemini-2.0-flash"
+  temperature: 0.1
