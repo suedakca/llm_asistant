@@ -11,7 +11,7 @@ def main():
     print("========================================================\n")
 
     drone = Drone()
-    security = SecurityLayer(max_altitude=50.0, min_battery=20)
+    security = SecurityLayer(base_max_altitude=50.0, low_battery_max_altitude=20.0, critical_battery=20)
     logger = ProjectLogger()
     
     try:
@@ -26,18 +26,29 @@ def main():
         user_command = input("\nPilot Mesajı: ")
         if user_command.lower() in ["çıkış", "exit", "quit"]:
             break
-
         if user_command == "bataryayi_tuket":
             drone.battery = 24
             print("-> [TEST] Drone bataryası yapay olarak %24'e düşürüldü!")
+            continue
+
+        if user_command == "batarya_45":
+            drone.battery = 45
+            print("-> [TEST] Drone bataryası yapay olarak %45'e düşürüldü (%50 altı dinamik sınır testi).")
+            continue
+
+        if user_command == "batarya_15":
+            drone.battery = 15
+            print("-> [TEST] Drone bataryası yapay olarak %15'e düşürüldü (%20 altı kritik sınır testi).")
             continue
 
         if not user_command.strip():
             continue
 
         # --- ADIM 1: İlk LLM Komutu Yorumluyor ---
-        print("[LLM 1 - ASİSTAN] Komut analiz ediliyor...")
-        parsed_intent = assistant.parse_command(user_command)
+        print("[LLM 1 - ASİSTAN] Komut ve diyalog geçmişi analiz ediliyor...")
+        current_telemetry = drone.get_telemetry()
+        parsed_intent = assistant.parse_command(user_command, current_telemetry) 
+        
         action = parsed_intent.get("action")
         parameter = parsed_intent.get("parameter")
         print(f"-> LLM 1 Kararı: Eylem='{action}' | Parametre={parameter}")

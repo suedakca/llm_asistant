@@ -118,5 +118,125 @@
         },
         "guvenlik_onayi": true,
         "sonuc_mesaji": "Başarılı: Başlangıç konumuna dönüldü (0.0, 0.0). İniş bekleniyor."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:25:42",
+        "kullanici_komutu": "10 metre kalkış yap",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 10
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: 10.0 metreye kalkış yapıldı. Mod: GUIDED"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:25:55",
+        "kullanici_komutu": "biraz daha yüksel",
+        "llm_yorumu": {
+            "action": "ambiguous",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:26:14",
+        "kullanici_komutu": "sistem durumunu kontrol et",
+        "llm_yorumu": {
+            "action": "get_telemetry",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Gözlemci Vetosu: Gözlemci model hatası nedeniyle güvenlik vetosu."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:26:33",
+        "kullanici_komutu": "şimdi oraya geri iniş yap",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:27:18",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:41:49",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:42:19",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 10
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: 10.0 metreye kalkış yapıldı. Mod: GUIDED"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:42:24",
+        "kullanici_komutu": "biraz daha yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:53:36",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:56:28",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:56:41",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 15:56:54",
+        "kullanici_komutu": "10 metre yüksel",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Geçersiz/Belirsiz komut."
     }
 ]

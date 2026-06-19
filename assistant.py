@@ -14,59 +14,94 @@ class PilotAssistant:
             raise ValueError("HATA: .env dosyasında GEMINI_API_KEY bulunamadı!")
         
         self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.5-flash" 
-
-    def parse_command(self, user_input):
-        """ [LLM 1] Kullanıcının doğal dil cümlesini komuta (JSON) çevirir. """
-        system_instruction = """
-        Sen bir İHA Pilot Asistanısın. Kullanıcının verdiği Türkçe komutları analiz ederek 
-        yalnızca verilen JSON formatında çıktı üretmelisin.
+        self.model_name = "gemini-1.5" 
         
-        Desteklenen fonksiyonlar (action):
-        1. 'get_telemetry': Durum veya telemetri sorgulamalarında kullanılır.
-        2. 'takeoff': Kalkış, yükselme komutlarında kullanılır. 'parameter' olarak hedef irtifayı (sayı) alır.
-        3. 'land': İniş yapma komutlarında kullanılır.
-        4. 'return_to_home': Eve dön komutlarında kullanılır.
-        5. 'invalid': Güvensiz, saçma isteklerde kullanılır.
-        6. 'ambiguous': Hedef belirtilmeyen belirsiz komutlarda kullanılır.
+        # --- LLM 1: ASİSTAN SOHBET TALİMATI ---
+        asistan_instruction = """
+        Sen bir İHA Pilot Asistanısın. Pilotla gerçek bir sohbet geçmişine sahipsin.
+        Görevin, pilotun doğal dildeki cümlelerini analiz edip drone komutlarına dönüştürmektir.
         
-        Çıktı Formatı: {"action": "fonksiyon_adı", "parameter": sayı_veya_null}
+        BAĞLAM VE HAFIZA KURALLARI:
+        - Pilot 'biraz daha yüksel' veya 'yukarı çık' derse, sana gönderilen ANLIK TELEMETRİDEKİ 'altitude' (irtifa) değerine bak. Mevcut irtifanın üzerine mantıklı bir miktar (örneğin 5 veya 10 metre) EKLEYEREK yeni bir hedef mutlak irtifa belirle ve 'takeoff' eylemi üret. Sakın 'ambiguous' deme!
+        - Pilot 'oraya git', 'oraya iniş yap' gibi kelimeler kullanırsa konuşma geçmişini incele. Eğer daha önce kalkış yapılan yerden veya evden bahsediyorsa bunu 'return_to_home' veya 'land' olarak çözebilirsin.
+        
+        DESTEKLENEN FONKSİYONLAR (action):
+        1. 'get_telemetry': Durum, batarya, konum sorgularında. Parametre almaz.
+        2. 'takeoff': Kalkış ve yükselmelerde. 'parameter' olarak her zaman net GİDİLECEK MUTLAK İRTİFAYI (sayı) üretir.
+        3. 'land': İniş komutlarında. Parametre almaz.
+        4. 'return_to_home': Eve dön komutlarında. Parametre almaz.
+        5. 'invalid': Tamamen anlamsız, uçuşla ilgisiz komutlarda.
+        6. 'ambiguous': Geçmişe ve telemetriye baksan dahi pilotun ne istediği hiç anlaşılamıyorsa.
+        
+        ÇIÇTI FORMATI: Sadece bu JSON formatında cevap ver, başka hiçbir yazı yazma:
+        {"action": "fonksiyon_adı", "parameter": sayı_veya_null}
         """
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=user_input,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    temperature=0.1
-                )
+        
+        self.assistant_chat = self.client.chats.create(
+            model=self.model_name,
+            config=types.GenerateContentConfig(
+                system_instruction=asistan_instruction,
+                response_mime_type="application/json",
+                temperature=0.1
             )
-            return json.loads(response.text)
-        except:
-            return {"action": "invalid", "parameter": None}
+        )
+
+    def parse_command(self, user_input, current_telemetry):
+            """ [LLM 1] Konuşma geçmişini ve anlık telemetriyi kullanarak komutu çözümler. """
+            
+            # Gemini'ın kafasının karışmaması için girdiyi çok daha net ve yapılandırılmış hale getiriyoruz
+            girdi_baglami = f"""
+            [SİSTEM DURUMU / ANLIK TELEMETRİ]
+            - İrtifa (altitude): {current_telemetry['altitude']}m
+            - Havada mı (in_air): {current_telemetry['in_air']}
+            - Batarya (battery): %{current_telemetry['battery']}
+            
+            [PİLOTUN SÖYLEDİĞİ CÜMLE]
+            "{user_input}"
+            """
+            
+            try:
+                # send_message kullanarak geçmişi otomatik biriktiriyoruz
+                response = self.assistant_chat.send_message(girdi_baglami)
+                
+                # Gelen cevabın içindeki gereksiz boşlukları temizleyelim
+                clean_text = response.text.strip()
+                
+                # Bazen model ```json ... ``` içinde dönebilir, onu temizleyelim
+                if clean_text.startswith("```"):
+                    clean_text = clean_text.split("```")[1]
+                    if clean_text.startswith("json"):
+                        clean_text = clean_text[4:]
+                
+                return json.loads(clean_text.strip())
+            except Exception as e:
+                # Hatanın ne olduğunu terminalde görmek için buraya print ekledik (Raporda silersin)
+                print(f"[LLM 1 PARSE HATASI]: {e} | Gelen Ham Metin: {response.text if 'response' in locals() else 'Yok'}")
+                return {"action": "invalid", "parameter": None}
 
     def observe_and_verify(self, telemetry, parsed_intent):
-        """ 
-        [LLM 2 - GÜVENLİK GÖZLEMCİSİ] 
-        İlk LLM'in kararını ve telemetriyi bağımsız olarak denetler, gerekçe sunar.
-        """
+        """ [LLM 2 - GÜVENLİK GÖZLEMCİSİ] Bağımsız denetim yapar. """
+        
+        # KRİTİK DÜZELTME: Eğer komut sadece telemetri okumak ise gözlemciyi yormadan direkt onayla
+        if parsed_intent.get("action") == "get_telemetry":
+            return {"decision": "APPROVED", "reason": "Telemetri sorgulama işlemi herhangi bir güvenlik riski barındırmaz."}
+
         system_instruction = f"""
         Sen bağımsız bir İHA Güvenlik Gözlemcisisin (Safety Watchdog). 
-        Görevin, Pilot Asistanının (LLM 1) aldığı kararı, drone'un güncel durumu ve katı güvenlik kuralları çerçevesinde denetlemektir.
+        Görevin, Pilot Asistanının (LLM 1) aldığı kararı, drone'un güncel batarya ve telemetri durumuna göre denetlemektir.
         
-        Katı Güvenlik Kuralları:
-        - Maksimum İrtifa Sınırı: Drone kesinlikle 50 metrenin üzerine çıkamaz. (Eğer drone havadaysa ve gelen parametre ile toplamı 50'yi aşacaksa VETO et!).
-        - Kritik Batarya Sınırı: Batarya %25 veya altındaysa, 'return_to_home' DIŞINDAKİ tüm havada kalma/kalkış komutlarını VETO et!
+        DİNAMİK GÜVENLİK KURALLARI:
+        1. Batarya %50 ve üzerinde ise: Maksimum irtifa sınırı 50 metredir.
+        2. Batarya %50'nin altına düştüğünde: Sistem maksimum güvenli irtifayı OTOMATİK OLARAK 20 metreye düşürür. (Hedef irtifa 20m'yi aşacaksa VETO et!).
+        3. Batarya %20'nin altına düştüğünde: YALNIZCA 'land' (iniş) ve 'return_to_home' (eve dönüş) komutlarına izin verilir. Diğer tüm uçuş/yükselme komutlarını kesinlikle VETO et!
         
         Sana sunulan veriler doğrultusunda kararını ver ve YALNIZCA şu JSON formatında dön:
         {{
             "decision": "APPROVED" veya "VETOED",
-            "reason": "Kararının gerekçesini açıklayan insansı, net bir Türkçe cümle."
+            "reason": "Kararının gerekçesini açıklayan, batarya durumuna ve dinamik sınırlara değinen Türkçe bir cümle."
         }}
         """
 
-        # Denetlenecek senaryoyu metin haline getiriyoruz
         audit_context = f"""
         GÜNCEL TELEMETRİ: {json.dumps(telemetry)}
         LLM 1'İN ALDIĞI KARAR: Action='{parsed_intent.get("action")}', Parameter={parsed_intent.get("parameter")}
@@ -83,5 +118,7 @@ class PilotAssistant:
                 )
             )
             return json.loads(response.text)
-        except:
-            return {"decision": "VETOED", "reason": "Gözlemci model hatası nedeniyle güvenlik vetosu."}
+        except Exception as e:
+            # Buradaki hatayı terminalde görebilmek için print ekledik
+            print(f"[GÖZLEMCİ İÇ HATASI]: {e}")
+            return {"decision": "VETOED", "reason": "Gözlemci model iç hatası nedeniyle güvenlik vetosu."}
