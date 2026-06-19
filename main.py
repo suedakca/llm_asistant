@@ -16,7 +16,7 @@ def get_voice_input():
         r.adjust_for_ambient_noise(source, duration=0.5)
         try:
             # En fazla 5 saniye sessizlik bekler, 10 saniyelik komut alabilir
-            audio = r.listen(source, timeout=5, phrase_time_limit=10)
+            audio = r.listen(source, timeout=5, phrase_time_limit=20)
             print("⏳ [SİSTEM] Ses işleniyor, metne dökülüyor...")
             
             # Google Speech-to-Text motorunu Türkçe diliyle tetikliyoruz
@@ -136,6 +136,7 @@ def main():
                 sonuc = drone.reboot()
                 print(sonuc)
                 logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
+                zincir_basarili = False  # reboot özel durum, genel başarı mesajı basma
                 break
 
             onay, sonuc = security.validate_and_execute(drone, act, param)
