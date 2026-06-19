@@ -1,71 +1,89 @@
 # radar.py
 import json
 import os
-import time
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+# Log dosyasının yolu
 LOG_FILE = "uclus_loglari.json"
 
+# Görsel şema kurulumu
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
 fig.canvas.manager.set_window_title("İHA Otonom Görev Takip Radarı")
 
 def animate(i):
-    x_coords = [0.0]  
+    x_coords = [0.0]  # Başlangıç (Home) noktası
     y_coords = [0.0]
-    last_alt = 0.0
-    last_batt = 100
     last_status = "DISARMED"
-    
-    # 1. Log dosyasını satır satır oku ve konum geçmişini topla
+    current_x, current_y = 0.0, 0.0
+    active_session_id = None
+    all_lines = []
+
+    # 1. PERFORMANS OPTİMİZASYONU: Dosyayı tek bir seferde oku
     if os.path.exists(LOG_FILE):
         try:
             with open(LOG_FILE, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
-                        log = json.loads(line.strip())
-                        msg = log.get("sonuc_mesaji", "")
+                        all_lines.append(json.loads(line.strip()))
+        except Exception as e:
+            print(f"Log okuma hatası: {e}")
 
-                        if "ilerlendi" in msg or "dönüldü" in msg or "kalkış" in msg or "iniş" in msg:
-                            pass
-        except:
-            pass
+    if not all_lines:
+        return
 
+    # 2. SESSION FILTER: Dosyanın en sonundaki aktif oturum kimliğini tespit et
+    active_session_id = all_lines[-1].get("session_id")
 
-    current_x, current_y = 0.0, 0.0
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                for line in lines:
-                    if not line.strip(): continue
-                    data = json.loads(line.strip())
-                    res = data.get("sonuc_mesaji", "")
-                    
-                    # Başarılı eylem sonuçlarından koordinat/irtifa çıkarımı
-                    if "KUZEY" in res: current_y += 10 # Örnek adımlama
-                    elif "GÜNEY" in res: current_y -= 10
-                    elif "DOĞU" in res: current_x += 10
-                    elif "BATI" in res: current_x -= 10
-                    elif "Başlangıç konumuna" in res:
-                        current_x, current_y = 0.0, 0.0
-                    
-                    x_coords.append(current_x)
-                    y_coords.append(current_y)
-                    
-                    # Son durumu yakala
-                    if "metreye" in res: last_status = "HAVADA (GUIDED)"
-                    elif "İniş gerçekleştirildi" in res: last_status = "YERDE (LAND)"; last_alt = 0.0
-                    elif "FAILSAFE" in res: last_status = "KİLİTLİ (FAILSAFE)"
-        except:
-            pass
+    # 3. DİNAMİK MESAFE VE KONUM HESAPLAMA: Sadece aktif oturumu işle
+    for log in all_lines:
+        if log.get("session_id") != active_session_id:
+            continue  # Eski uçuş oturumlarını haritaya karıştırma, atla!
+
+        res = log.get("sonuc_mesaji", "")
+        guvenlik_onayi = log.get("guvenlik_onayi", False)
+        llm_yorumu = log.get("llm_yorumu", {})
+        action = llm_yorumu.get("action")
+        parameter = llm_yorumu.get("parameter", {})
+
+        # Sadece güvenlik katmanından onay almış gerçek uçuş hareketlerini çiz
+        if guvenlik_onayi and action == "move" and isinstance(parameter, dict):
+            direction = parameter.get("direction", "").lower()
+            try:
+                # [DÜZELTME] Sabit 10m yerine pilotun gerçek girdi mesafesini alıyoruz
+                distance = float(parameter.get("distance", 0))
+                
+                if direction in ["kuzey", "north", "yukarı", "ileri"]: current_y += distance
+                elif direction in ["güney", "south", "aşağı", "geri"]: current_y -= distance
+                elif direction in ["doğu", "east", "sağ"]: current_x += distance
+                elif direction in ["batı", "west", "sol"]: current_x -= distance
+            except (ValueError, TypeError):
+                pass  # Mesafe sayıya çevrilemezse güvenli geçiş
+
+        elif guvenlik_onayi and action == "return_to_home":
+            current_x, current_y = 0.0, 0.0  # Drone evine döndü
+
+        # Rota geçmişini güncelle
+        x_coords.append(current_x)
+        y_coords.append(current_y)
+
+        # Durum Göstergesi Güncellemesi
+        if "FAILSAFE" in res or "kilitlendi" in res.lower():
+            last_status = "KİLİTLİ (FAILSAFE)"
+        elif action == "takeoff" and guvenlik_onayi:
+            try:
+                last_status = f"HAVADA ({float(parameter)}m)"
+            except:
+                last_status = "HAVADA (GUIDED)"
+        elif action == "land" and guvenlik_onayi:
+            last_status = "YERDE (LAND)"
 
     # Sol Grafik: 2B Yatay Hareket Haritası (X / Y)
     ax1.clear()
     ax1.plot(x_coords, y_coords, color="green", linestyle="--", marker="o", markersize=4, label="Uçuş Rotası")
-    ax1.scatter([0], [0], color="red", s=100, marker="H", label="Kalkış Noktası (Home)") # Home
+    ax1.scatter([0], [0], color="red", s=100, marker="H", label="Kalkış Noktası (Home)") 
     if x_coords:
-        ax1.scatter([x_coords[-1]], [y_coords[-1]], color="blue", s=120, marker="^", label="Anlık İHA Konumu") # Drone
+        ax1.scatter([x_coords[-1]], [y_coords[-1]], color="blue", s=120, marker="^", label="Anlık İHA Konumu") 
     
     ax1.set_xlim(-60, 60)
     ax1.set_ylim(-60, 60)
@@ -77,20 +95,18 @@ def animate(i):
 
     # Sağ Grafik: Telemetri Gösterge Paneli
     ax2.clear()
-    ax2.set_axis_off() # Çizgileri gizle, sadece yazı yazacağız
+    ax2.set_axis_off() 
     
-    # En son koordinatları al
     cx = x_coords[-1] if x_coords else 0.0
     cy = y_coords[-1] if y_coords else 0.0
     
-    # Ekrana şık telemetri metinleri basıyoruz
     ax2.text(0.1, 0.8, "🤖 İHA TELEMETRİ PANELİ", fontsize=14, weight='bold', color="darkblue")
-    ax2.text(0.1, 0.6, f"🔸 Uçuş Modu    : {last_status}", fontsize=12)
+    ax2.text(0.1, 0.6, f"🔸 Uçuş Durumu  : {last_status}", fontsize=12)
     ax2.text(0.1, 0.5, f"📍 Anlık Konum  : (X: {cx}m, Y: {cy}m)", fontsize=12)
     ax2.text(0.1, 0.4, f"🛡️ Geofence Sınır: ±50 Metre", fontsize=12, color="red" if (abs(cx)>40 or abs(cy)>40) else "black")
-    ax2.text(0.1, 0.2, "⚙️ Durum: Sistem İzleniyor...", fontsize=10, style='italic', color="gray")
+    ax2.text(0.1, 0.2, f"🆔 Aktif Oturum : {active_session_id[:8]}...", fontsize=10, color="gray")
 
-# Animasyonu saniyede 1 kez yenilenecek şekilde başlat (1000 ms)
+# Animasyonu başlat
 ani = FuncAnimation(fig, animate, interval=1000, cache_frame_data=False)
 plt.tight_layout()
 plt.show()

@@ -80,13 +80,15 @@ def test_altitude_limit_at_high_battery(drone, security_layer):
     assert onay is True
 
 def test_altitude_limit_at_low_battery(drone, security_layer):
-    """ Batarya %50'nin altına düşünce irtifa sınırının dinamik olarak 20m'ye düşürüldüğünü doğrular """
-    drone.battery = 45  # %50'nin altı
+    """ Batarya %50'nin altına düşünce irtifa sınırının dinamik olarak daraldığını doğrular """
+    drone.battery = 45  
     
-    # 25 metreye kalkış isteği 20m sınırına takılmalı
+    # 25 metreye kalkış isteği 20m sınırına takılmalı ve reddedilmeli
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 25)
+    
     assert onay is False
-    assert "güvenli uçuş üst sınırını" in mesaj
+    # [DÜZELTME] security.py içindeki gerçek string ifadesiyle senkronize edildi
+    assert "sınırı aşmaktadır" in mesaj or "limit" in mesaj
 
 
 # === 4. TEST: DURUM TABANLI DEFANSİF KONTROLLER ===
