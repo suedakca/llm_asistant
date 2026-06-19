@@ -58,5 +58,65 @@
         },
         "guvenlik_onayi": false,
         "sonuc_mesaji": "GÜVENLİK REDDİ: Mevcut irtifa 30.0m. Üzerine 50.0m eklenirse güvenli sınır (50.0m) aşılıyor! İstenen toplam: 80.0m."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:11:24",
+        "kullanici_komutu": "bataryayi tuket",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Komut belirsiz veya geçersiz olduğu için işlenmedi."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:11:56",
+        "kullanici_komutu": "bataryayi_tuket",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Komut belirsiz veya geçersiz olduğu için işlenmedi."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:12:04",
+        "kullanici_komutu": "bataryayi_tuket",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Komut belirsiz veya geçersiz olduğu için işlenmedi."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:13:33",
+        "kullanici_komutu": "10 metre daha yüksel",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 10
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: 10.0 metreye kalkış yapıldı. Mod: GUIDED"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:13:57",
+        "kullanici_komutu": "30 metre daha yüksel",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 30
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: Başlangıç konumuna dönüldü (0.0, 0.0). İniş bekleniyor."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:14:15",
+        "kullanici_komutu": "iniş yap",
+        "llm_yorumu": {
+            "action": "land",
+            "parameter": null
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: Başlangıç konumuna dönüldü (0.0, 0.0). İniş bekleniyor."
     }
 ]
