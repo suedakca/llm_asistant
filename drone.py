@@ -13,12 +13,18 @@ class Drone:
         self.home_y = 0.0
         self.takeoff_time = None 
         self.failsafe_active = False
+        self.checklist_completed = False
         self._battery_debt = 0.0  # kesirli tüketim birikimi
 
         if drone_config and "battery_drain_per_second" in drone_config:
             self.drain_rate = float(drone_config["battery_drain_per_second"])
         else:
             self.drain_rate = 0.5
+
+        if drone_config and "simulated_wind_speed" in drone_config:
+            self.wind_speed = float(drone_config["simulated_wind_speed"])
+        else:
+            self.wind_speed = 15.0
 
     def _update_battery_consumption(self):
         if self.in_air and self.takeoff_time is not None:
@@ -44,7 +50,9 @@ class Drone:
             "mode": self.mode,
             "battery": self.battery,
             "in_air": self.in_air,
-            "failsafe": self.failsafe_active
+            "failsafe": self.failsafe_active,
+            "checklist_completed": self.checklist_completed,
+            "wind_speed": self.wind_speed
         }
 
     def set_home(self, new_x, new_y):
@@ -68,9 +76,10 @@ class Drone:
         if self.in_air:
             return "Hata: Havada iken yeniden başlatma (reboot) yapılamaz!"
         self.failsafe_active = False
+        self.checklist_completed = False
         self.mode = "DISARMED"
         self.battery = 100 
-        return "Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı."
+        return "Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı. Kontrol listesi sıfırlandı."
 
     def takeoff(self, target_altitude):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
@@ -96,13 +105,14 @@ class Drone:
         self.mode = "LAND"
         self.takeoff_time = None
         self._battery_debt = 0.0
+        self.checklist_completed = False
 
         if self.battery <= 0:
             print("\n[KRİTİK GÜVENLİK SİSTEMİ] İNİŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
             self.emergency_stop()
-            return "Başarılı: İniş gerçekleştirildi ancak batarya tamamen tükendi (Motor Kesildi)."
+            return "Başarılı: İniş gerçekleştirildi ancak batarya tamamen tükendi (Motor Kesildi). Kontrol listesi sıfırlandı."
 
-        return "Başarılı: İniş gerçekleştirildi."
+        return "Başarılı: İniş gerçekleştirildi. Bir sonraki kalkış için kontrol listesini tekrar onaylamalısınız."
 
     def return_to_home(self):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
@@ -117,13 +127,14 @@ class Drone:
         self.mode = "RTL_LAND"
         self.takeoff_time = None
         self._battery_debt = 0.0
+        self.checklist_completed = False
 
         if self.battery <= 0:
             print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] EVE DÖNÜŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
             self.emergency_stop()
-            return f"Başarılı: Başlangıç konumuna dönüldü ({self.home_x}, {self.home_y}) ancak batarya tamamen tükendi (Sistem Kilitlendi)."
+            return f"Başarılı: Başlangıç konumuna dönüldü ({self.home_x}, {self.home_y}) ancak batarya tamamen tükendi (Sistem Kilitlendi). Kontrol listesi sıfırlandı."
 
-        return f"Başarılı: Başlangıç konumuna dönüldü ({self.x}, {self.y}) ve güvenli iniş tamamlandı."
+        return f"Başarılı: Başlangıç konumuna dönüldü ({self.x}, {self.y}) ve güvenli iniş tamamlandı. Bir sonraki kalkış için kontrol listesini tekrar onaylamalısınız."
 
     def move(self, direction, distance):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"

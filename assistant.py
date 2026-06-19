@@ -26,7 +26,15 @@ class PilotAssistant:
         - Eğer bir zincir içinde ardışık yükselmeler varsa, telemetriye ve zincirdeki önceki takeoff adımlarına bakarak mutlak hedefi matematiksel olarak hesapla.
         
         DESTEKLENEN FONKSİYONLAR:
-        'get_telemetry', 'takeoff', 'land', 'return_to_home', 'move', 'reboot', 'set_home', 'invalid'/'ambiguous'.
+        - 'get_telemetry'
+        - 'takeoff'
+        - 'land'
+        - 'return_to_home'
+        - 'move'
+        - 'reboot'
+        - 'set_home'
+        - 'complete_checklist': Pilot kalkış öncesi kontrollerin tamam olduğunu belirttiğinde ("kontroller tamam", "hazırız", "pervaneler ve gps tamam" vb.) çalıştırılır. Parametre almaz.
+        - 'invalid'/'ambiguous'
         
         ÇIÇTI FORMATI (ÇOK KRİTİK):
         YALNIZCA geçerli bir JSON LİSTESİ (ARRAY) dönmelisin. Tek bir komut dahi olsa liste içinde olmalıdır.

@@ -6,6 +6,7 @@ class SecurityLayer:
         self.low_battery_max_altitude = float(config_dict["low_battery_max_altitude"])
         self.critical_battery = int(config_dict["critical_battery"])
         self.geofence_boundary = float(config_dict["geofence_boundary"])
+        self.max_wind_speed = float(config_dict.get("max_wind_speed", 30.0))
 
     def validate_and_execute(self, drone, action, parameter=None):
         telemetri = drone.get_telemetry() 
@@ -20,6 +21,12 @@ class SecurityLayer:
 
     def _check_safety_rules(self, telemetri, action, parameter):
         current_battery = telemetri["battery"]
+        current_wind = telemetri.get("wind_speed", 0.0)
+
+        # 0. RÜZGAR HIZI KONTROLÜ (TAKEOFF VEYA MOVE İÇİN)
+        if action in ["takeoff", "move"]:
+            if current_wind > self.max_wind_speed:
+                return True, f"RÜZGAR ENGELİ: Anlık rüzgar hızı ({current_wind} km/s) güvenli uçuş limitini ({self.max_wind_speed} km/s) aşmaktadır! Uçuş gerçekleştirilemez."
 
         # 1. KRİTİK BATARYA KONTROLÜ
         if current_battery < self.critical_battery:
@@ -36,6 +43,8 @@ class SecurityLayer:
 
         # 3. TAKEOFF / YÜKSELME VALIDASYONU
         if action == "takeoff":
+            if not telemetri["in_air"] and not telemetri["checklist_completed"]:
+                return True, "Kalkış öncesi kontrol listesi (Pre-flight Checklist) onaylanmadı! Kalkış yapabilmek için lütfen kalkış öncesi kontrolleri onaylayın (Örn: 'kontroller tamam').\nKontroller: 1. Pervaneler sağlam mı? 2. GPS kilitlendi mi? 3. Çevre uçuşa güvenli mi?"
             if parameter is None: return True, "Hedef irtifa belirtilmedi."
             hedef_mutlak_irtifa = float(parameter)
             if hedef_mutlak_irtifa <= 0: return True, "Hedef irtifa pozitif olmalı."
@@ -87,6 +96,10 @@ class SecurityLayer:
         if action in ["land", "return_to_home"] and not telemetri["in_air"]:
             return True, "Araç zaten havada değil, bu işlem gerçekleştirilemez."
 
+        if action == "complete_checklist":
+            if telemetri["in_air"]:
+                return True, "Araç zaten havada, kalkış öncesi kontrol listesi onaylanamaz."
+
         return False, None
 
     def _execute_action(self, drone, action, parameter):
@@ -99,6 +112,10 @@ class SecurityLayer:
 
         if action == "set_home":
             return drone.set_home(parameter["x"], parameter["y"])
+
+        if action == "complete_checklist":
+            drone.checklist_completed = True
+            return "Başarılı: Kalkış öncesi kontrol listesi onaylandı. Artık güvenle kalkış yapabilirsiniz (takeoff)."
 
         fonksiyon_haritasi = {
             "land": drone.land,

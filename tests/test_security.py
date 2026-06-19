@@ -73,12 +73,14 @@ def test_land_allowed_at_critical_battery(drone, security_layer):
 def test_altitude_limit_at_high_battery(drone, security_layer):
     """ Batarya %50'nin üzerindeyken 50 metreye kadar tırmanışa izin verildiğini doğrular """
     drone.battery = 80
+    drone.checklist_completed = True
     onay, _ = security_layer.validate_and_execute(drone, "takeoff", 45)
     assert onay is True
 
 def test_altitude_limit_at_low_battery(drone, security_layer):
     """ Batarya %50'nin altına düşünce irtifa sınırının dinamik olarak daraldığını doğrular """
     drone.battery = 45  
+    drone.checklist_completed = True
     
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 25)
     
@@ -100,6 +102,7 @@ def test_move_action_blocked_on_ground(drone, security_layer):
 def test_failsafe_lock_blocks_everything(drone, security_layer):
     """ Sistem bir kez Failsafe moduna girdiğinde hiçbir komutun işlenemediğini doğrular """
     drone.emergency_stop()
+    drone.checklist_completed = True
     
     onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
     assert onay is False
@@ -120,3 +123,64 @@ def test_set_home_blocked_outside_geofence(drone, security_layer):
     onay, mesaj = security_layer.validate_and_execute(drone, "set_home", {"x": 60, "y": 10}) # Limit: 50.0
     assert onay is False
     assert "sınırlarının" in mesaj and "dışındadır" in mesaj
+
+
+# === 7. TEST: KALKIŞ ÖNCESİ KONTROL LİSTESİ (CHECKLIST) TESTLERİ ===
+def test_takeoff_blocked_without_checklist(drone, security_layer):
+    """ Kontrol listesi onaylanmadan kalkışın kesinlikle engellendiğini doğrular """
+    drone.battery = 100
+    drone.checklist_completed = False
+    
+    onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
+    assert onay is False
+    assert "kontrol listesi (Pre-flight Checklist) onaylanmadı" in mesaj
+    assert drone.in_air is False
+
+def test_checklist_approval_allows_takeoff(drone, security_layer):
+    """ Kontrol listesi onaylandıktan sonra kalkışın başarılı olduğunu doğrular """
+    drone.battery = 100
+    drone.checklist_completed = False
+    
+    # 1. Kontrolleri tamamla
+    onay_c, mesaj_c = security_layer.validate_and_execute(drone, "complete_checklist", None)
+    assert onay_c is True
+    assert drone.checklist_completed is True
+    
+    # 2. Kalkış yap
+    onay_t, mesaj_t = security_layer.validate_and_execute(drone, "takeoff", 10)
+    assert onay_t is True
+    assert drone.in_air is True
+
+def test_checklist_resets_on_landing(drone, security_layer):
+    """ Uçuş tamamlanıp iniş yapılınca kontrol listesinin sıfırlandığını doğrular """
+    drone.battery = 100
+    drone.checklist_completed = True
+    drone.in_air = True
+    drone.altitude = 10.0
+    
+    onay, mesaj = security_layer.validate_and_execute(drone, "land", None)
+    assert onay is True
+    assert drone.checklist_completed is False
+
+
+# === 8. TEST: HAVA DURUMU (RÜZGAR HIZI) GÜVENLİK TESTLERİ ===
+def test_takeoff_blocked_in_high_wind(drone, security_layer):
+    """ Rüzgar hızı güvenli limiti aştığında kalkışın engellendiğini doğrular """
+    drone.battery = 100
+    drone.checklist_completed = True
+    drone.wind_speed = 35.0  # Limit: 30.0 km/s
+    
+    onay, mesaj = security_layer.validate_and_execute(drone, "takeoff", 10)
+    assert onay is False
+    assert "RÜZGAR ENGELİ" in mesaj
+    assert drone.in_air is False
+
+def test_move_blocked_in_high_wind(drone, security_layer):
+    """ Rüzgar hızı güvenli limiti aştığında yatay hareketin engellendiğini doğrular """
+    drone.in_air = True
+    drone.altitude = 10.0
+    drone.wind_speed = 35.0  # Limit: 30.0 km/s
+    
+    onay, mesaj = security_layer.validate_and_execute(drone, "move", {"direction": "kuzey", "distance": 10})
+    assert onay is False
+    assert "RÜZGAR ENGELİ" in mesaj
