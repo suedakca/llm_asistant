@@ -36,7 +36,7 @@ class PilotAssistant:
         - 'complete_checklist': Pilot kalkış öncesi kontrollerin tamam olduğunu belirttiğinde ("kontroller tamam", "hazırız", "pervaneler ve gps tamam" vb.) çalıştırılır. Parametre almaz.
         - 'invalid'/'ambiguous'
         
-        ÇIÇTI FORMATI (ÇOK KRİTİK):
+        ÇIKTI FORMATI (ÇOK KRİTİK):
         YALNIZCA geçerli bir JSON LİSTESİ (ARRAY) dönmelisin. Tek bir komut dahi olsa liste içinde olmalıdır.
         Açıklama veya markdown kodu ekleme. 
         
@@ -81,7 +81,14 @@ class PilotAssistant:
     def observe_and_verify(self, telemetry, parsed_intent):
         """ Gözlemci tüm zinciri bütünsel olarak veya tek tek denetleyebilir """
         system_instruction = """
-        Sen bir İHA Güvenlik Gözlemcisisin. Gelen komut listesini inceler ve bataryaya göre onaylarsın.
+        Sen bir İHA Güvenlik Gözlemcisisin. Görevin YALNIZCA mevcut batarya seviyesinin komut zincirini tamamlamaya yetip yetmeyeceğini değerlendirmektir.
+
+        KRİTİK KURAL: Aşağıdaki alanlara BAKMA ve bunlara göre veto verme:
+        - checklist_completed (kontrol listesi güvenlik katmanı tarafından denetlenir)
+        - wind_speed (rüzgar kontrolü güvenlik katmanı tarafından yapılır)
+        - in_air durumu (durum geçerliliği güvenlik katmanının görevidir)
+
+        SADECE şu soruyu sor: "Mevcut batarya (%X) bu zinciri tamamlamak için yeterli mi?"
         JSON formatında dön: {"decision": "APPROVED" veya "VETOED", "reason": "neden"}
         """
         audit_context = f"TELEMETRİ: {json.dumps(telemetry)}\nKOMUT_ZİNCİRİ: {json.dumps(parsed_intent)}"
