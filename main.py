@@ -60,39 +60,40 @@ def main():
 
     while True:
         current_telemetry = drone.get_telemetry()
-        
-        # Arka plandaki %0 batarya otomatik failsafe kontrolü
+
+        # Batarya tükenme failsafe'ini bir kez logla, modu kilitle
         if current_telemetry["failsafe"] and drone.mode == "EMERGENCY_LAND":
             logger.log_action(session_id, "SİSTEM_OTOMATİK_BATARYA_KAYBI", "EMERGENCY_STOP", None, True, "Otomatik batarya tükenme failsafe tetiklendi.")
-            drone.mode = "CRASHED_LOCKED" 
+            drone.mode = "CRASHED_LOCKED"
 
-        # Giriş Yöntemi Seçimi (Kullanıcı konforu ve hata toleransı için)
+        # Giriş yöntemi seç
         giriş_tipi = input("\nGiriş Yöntemi [K: Klavye / S: Sesli Komut / Ç: Çıkış]: ").lower().strip()
-        
+
         if giriş_tipi in ["ç", "çıkış", "exit"]:
             logger.print_session_summary(session_id, drone.get_telemetry())
             break
-            
+
         if giriş_tipi == "s":
             user_command = get_voice_input()
-            if not user_command: 
-                continue  # Ses boşsa döngünün başına dön
+            if not user_command:
+                continue
         elif giriş_tipi == "k":
             user_command = input("Pilot Mesajı (Klavye): ")
         else:
             print("⚠️ Geçersiz seçim. Lütfen K, S veya Ç girin.")
             continue
 
-        # Acil Durdurma Bypass Kontrolü
+        if not user_command.strip():
+            continue
+
+        # Acil durdurma — LLM'i bypass eder
         if user_command.upper() in emergency_words:
             sonuc = drone.emergency_stop()
             print(sonuc)
             logger.log_action(session_id, user_command, "EMERGENCY_STOP", None, True, sonuc)
             continue
 
-        if not user_command.strip(): continue
-
-        # Sistem kilitliyse LLM çalışmasını engelleme kontrolü
+        # Failsafe kilitliyse yalnızca reboot'a izin ver
         if current_telemetry["failsafe"]:
             print("Asistan Yanıtı: Sistem Failsafe modunda kilitlidir. Lütfen önce 'reboot' yapın.")
             if user_command.lower() in ["sistemi yeniden başlat", "reboot"]:
@@ -101,40 +102,58 @@ def main():
                 logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
             continue
 
-        print("[LLM 1] Komut analiz ediliyor...")
-        parsed_intent = assistant.parse_command(user_command, current_telemetry)
-        action = parsed_intent.get("action")
-        parameter = parsed_intent.get("parameter")
-        print(f"-> LLM 1 Kararı: Eylem='{action}' | Parametre={parameter}")
+        print("[LLM 1] Çoklu görev zinciri analiz ediliyor...")
+        parsed_intent_list = assistant.parse_command(user_command, current_telemetry)
+        print(f"-> LLM 1 Kararı: {len(parsed_intent_list)} adet ardışık alt görev planlandı.")
 
-        if action == "reboot":
-            sonuc = drone.reboot()
-            print(sonuc)
-            logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
-            continue
-
-        if action in ["ambiguous", "invalid"]:
+        if parsed_intent_list and parsed_intent_list[0].get("action") in ["ambiguous", "invalid"]:
             print("Asistan Yanıtı: Komut anlaşılamadı.")
-            logger.log_action(session_id, user_command, action, parameter, False, "Hata")
+            logger.log_action(session_id, user_command, "Hata", None, False, "Geçersiz")
             continue
 
-        if action in high_risk_list:
-            print("[LLM 2] Yüksek riskli eylem algılandı, denetleniyor...")
-            observer_audit = assistant.observe_and_verify(current_telemetry, parsed_intent)
+        # LLM 2: Zincirde yüksek riskli eylem varsa gözlemciye gönder
+        has_high_risk = any(cmd.get("action") in high_risk_list for cmd in parsed_intent_list)
+        if has_high_risk:
+            print("[LLM 2] Zincirde yüksek riskli eylem saptandı, denetleniyor...")
+            observer_audit = assistant.observe_and_verify(current_telemetry, parsed_intent_list)
             if observer_audit.get("decision") == "VETOED":
                 print(f"🚨 GÖZLEMCİ VETOSU: {observer_audit.get('reason')}")
-                logger.log_action(session_id, user_command, action, parameter, False, "LLM 2 Vetosu")
+                logger.log_action(session_id, user_command, "MULTI_ACTION", None, False, "LLM 2 Vetosu")
                 continue
         else:
-            print("[SİSTEM] Düşük riskli eylem, Gözlemci LLM bypass edildi.")
+            print("[SİSTEM] Düşük riskli zincir, Gözlemci LLM bypass edildi.")
 
-        onay, sonuc = security.validate_and_execute(drone, action, parameter)
-        print(f"Asistan Yanıtı: {sonuc}")
-        
-        logger.log_action(session_id, user_command, action, parameter, onay, sonuc)
-        
+        # Ardışık görev yürütme motoru
+        zincir_basarili = True
+        gecici_sonuclar = []
+
+        for siradaki_gorev in parsed_intent_list:
+            act = siradaki_gorev.get("action")
+            param = siradaki_gorev.get("parameter")
+            print(f"➡️  Alt Görev İşleniyor: Action='{act}' | Parameter={param}")
+
+            if act == "reboot":
+                sonuc = drone.reboot()
+                print(sonuc)
+                logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
+                break
+
+            onay, sonuc = security.validate_and_execute(drone, act, param)
+            if onay:
+                print(f"   [ONAYLANDI]: {sonuc}")
+                gecici_sonuclar.append(sonuc)
+                logger.log_action(session_id, user_command, act, param, True, sonuc)
+            else:
+                print(f"   🚨 [GÜVENLİK ENGELİ]: {sonuc} | Görev zinciri KESİLDİ!")
+                logger.log_action(session_id, user_command, act, param, False, f"Zincir kırıldı: {sonuc}")
+                zincir_basarili = False
+                break
+
+        if zincir_basarili:
+            print(f"Asistan Yanıtı (TÜM ZİNCİR BAŞARILI): Toplam {len(gecici_sonuclar)} eylem uygulandı.")
+
         t = drone.get_telemetry()
-        print(f"-> [Durum] İrtifa: {t['altitude']}m | Batarya: %{t['battery']} | Konum: ({t['x']},{t['y']}) | Kilitli: {t['failsafe']}")
+        print(f"-> [Son Durum] İrtifa: {t['altitude']}m | Batarya: %{t['battery']} | Konum: ({t['x']},{t['y']}) | Kilitli: {t['failsafe']}")
 
 if __name__ == "__main__":
     main()
