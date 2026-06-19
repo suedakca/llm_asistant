@@ -29,18 +29,17 @@ def main():
     print(f"=== SİSTEM AKTİF | OTURUM ID: {session_id} ===")
 
     while True:
-        # Arka plandaki %0 batarya failsafe durumunun loglara sızması için anlık kontrol
-        t_check = drone.get_telemetry()
-        if t_check["failsafe"] and drone.mode == "EMERGENCY_LAND":
-            # Eğer arka planda %0'dan dolayı motor durduysa sisteme işle ve döngüyü kilitle
+        current_telemetry = drone.get_telemetry()
+        
+        # Arka plandaki %0 batarya otomatik failsafe kontrolünü bu tek nesne üzerinden yapıyoruz
+        if current_telemetry["failsafe"] and drone.mode == "EMERGENCY_LAND":
             logger.log_action(session_id, "SİSTEM_OTOMATİK_BATARYA_KAYBI", "EMERGENCY_STOP", None, True, "Otomatik batarya tükenme failsafe tetiklendi.")
-            # Mode değiştiriyoruz ki sonsuz döngüde her saniye log yazmasın
             drone.mode = "CRASHED_LOCKED" 
 
         user_command = input("\nPilot Mesajı: ")
         
         if user_command.lower() in ["çıkış", "exit", "quit"]:
-            logger.print_session_summary(session_id, drone.get_telemetry())
+            logger.print_session_summary(session_id, current_telemetry)
             break
 
         if user_command.upper() in emergency_words:
@@ -51,9 +50,7 @@ def main():
 
         if not user_command.strip(): continue
 
-        current_telemetry = drone.get_telemetry()
-        
-        # Eğer sistem kilitliyse LLM çalıştırma
+        # Eğer sistem kilitliyse LLM çalışmasını engelleme kontrolü
         if current_telemetry["failsafe"]:
             print("Asistan Yanıtı: Sistem Failsafe modunda kilitlidir. Lütfen önce 'reboot' yapın.")
             if user_command.lower() in ["sistemi yeniden başlat", "reboot"]:

@@ -60,7 +60,7 @@ class PilotAssistant:
 
         system_instruction = """
         Sen bir İHA Güvenlik Gözlemcisisin. Gelen mutlak hedef komutlarını bataryaya göre veto edersin.
-        JSON formatında dön: {"decision": "APPROVED"延 veya "VETOED", "reason": "neden"}
+        JSON formatında dön: {"decision": "APPROVED" veya "VETOED", "reason": "neden"}
         """
         audit_context = f"TELEMETRİ: {json.dumps(telemetry)}\nKOMUT: {json.dumps(parsed_intent)}"
         try:

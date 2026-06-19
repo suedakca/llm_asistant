@@ -57,13 +57,17 @@ class Drone:
 
     def takeoff(self, target_altitude):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
+        if self.in_air:
+            self.altitude = target_altitude
+            return f"Başarılı: İrtifa {target_altitude} metreye güncellendi."
+            
         self.in_air = True 
         self.altitude = target_altitude
         self.mode = "GUIDED" 
         self.battery = max(0, self.battery - 5) 
         self.takeoff_time = time.time() 
-        return f"Başarılı: {target_altitude} metreye kalkış yapıldı."
-
+        return f"Başarılı: {target_altitude} metreye ilk kalkış yapıldı."
+    
     def land(self):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         self._update_battery_consumption()
