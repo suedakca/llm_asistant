@@ -1,17 +1,19 @@
-
+# main.py
 import os
 from drone import Drone
 from security import SecurityLayer
 from assistant import PilotAssistant
+from logger import ProjectLogger # Yeni ekledik
 
 def main():
-
     print("========================================================")
     print("=== UÇTAN UCA YAPAY ZEKA TABANLI İHA PİLOT ASİSTANI ===")
     print("========================================================\n")
 
+    # Sistem bileşenlerini başlatıyoruz
     drone = Drone()
     security = SecurityLayer(max_altitude=50.0, min_battery=20)
+    logger = ProjectLogger() # Loglayıcıyı çalıştırdık
     
     try:
         assistant = PilotAssistant()
@@ -19,7 +21,7 @@ def main():
         print(e)
         return
 
-    print("Asistan hazır! Çıkmak için 'çıkış' yazabilirsiniz.\n")
+    print("Asistan ve Kayıt Sistemi hazır! Çıkmak için 'çıkış' yazabilirsiniz.\n")
 
     while True:
         user_command = input("\nPilot Mesajı: ")
@@ -37,20 +39,30 @@ def main():
         
         print(f"[LLM ÇIKTISI] Anlaşılan Eylem: '{action}' | Parametre: {parameter}")
 
-        if action == "ambiguous":
-            print("Asistan Yanıtı: Komutunuz belirsiz. Lütfen net bir hedef irtifa belirtin (Örn: '10 metreye kalk').")
-            continue
-        elif action == "invalid":
-            print("Asistan Yanıtı: İstenen işlem geçersiz veya desteklenmeyen bir araç fonksiyonu içeriyor.")
+        # Belirsiz veya Geçersiz komut durumlarını yakalayalım ve loglayalım
+        if action in ["ambiguous", "invalid"]:
+            mesaj = "Komut belirsiz veya geçersiz olduğu için işlenmedi."
+            if action == "ambiguous":
+                mesaj = "Komut belirsiz. Net hedef irtifa istendi."
+            print(f"Asistan Yanıtı: {mesaj}")
+            
+            # Güvenliğe gitmeden reddedilenleri de günlüğe yazıyoruz
+            logger.log_action(user_command, action, parameter, False, mesaj)
             continue
 
+        # 3. Güvenlik Katmanı Doğrulaması ve Çalıştırma
         onay, sonuc = security.validate_and_execute(drone, action, parameter)
         
+        # 4. Sonucu Ekrana Bas
         if onay:
             print(f"Asistan Yanıtı (BAŞARILI): {sonuc}")
         else:
             print(f"Asistan Yanıtı (REDDEDİLDİ): {sonuc}")
             
+        # 5. Her şeyi JSON dosyasına kaydet
+        logger.log_action(user_command, action, parameter, onay, sonuc)
+            
+        # Güncel durumu göster
         t = drone.get_telemetry()
         print(f"-> [Anlık Durum] İrtifa: {t['altitude']}m | Batarya: %{t['battery']} | Havada: {t['in_air']}")
 

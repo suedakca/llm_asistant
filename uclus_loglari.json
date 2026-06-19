@@ -1,0 +1,42 @@
+[
+    {
+        "zaman_damgasi": "2026-06-19 14:00:57",
+        "kullanici_komutu": "20 metre kalk",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 20
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Başarılı: 20 metreye kalkış yapıldı. Mod: GUIDED"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:01:10",
+        "kullanici_komutu": "40 metre in",
+        "llm_yorumu": {
+            "action": "invalid",
+            "parameter": null
+        },
+        "guvenlik_onayi": false,
+        "sonuc_mesaji": "Komut belirsiz veya geçersiz olduğu için işlenmedi."
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:01:21",
+        "kullanici_komutu": "50 metre kalkış yap",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 50
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Hata: Araç zaten havada!"
+    },
+    {
+        "zaman_damgasi": "2026-06-19 14:01:31",
+        "kullanici_komutu": "30 metre daha kalkış yap",
+        "llm_yorumu": {
+            "action": "takeoff",
+            "parameter": 30
+        },
+        "guvenlik_onayi": true,
+        "sonuc_mesaji": "Hata: Araç zaten havada!"
+    }
+]
