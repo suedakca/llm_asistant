@@ -72,9 +72,10 @@ def animate(i):
         elif guvenlik_onayi and action == "return_to_home":
             current_x, current_y = home_x, home_y  # Drone evine döndü
 
-        # Rota geçmişini güncelle
-        x_coords.append(current_x)
-        y_coords.append(current_y)
+        # Rota geçmişini yalnızca konum değiştiren eylemlerde güncelle
+        if guvenlik_onayi and action in ["move", "return_to_home", "set_home"]:
+            x_coords.append(current_x)
+            y_coords.append(current_y)
 
         # Durum Göstergesi Güncellemesi
         if "FAILSAFE" in res or "kilitlendi" in res.lower():

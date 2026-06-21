@@ -7,6 +7,8 @@ drone_settings:
   battery_drain_per_second: 0.5
   max_wind_speed: 30.0
   simulated_wind_speed: 15.0
+  mavlink_enabled: false
+  mavlink_connection_string: "udpin:localhost:14540"
 
 llm_settings:
   model_name: "gemini-2.0-flash"

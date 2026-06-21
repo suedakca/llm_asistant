@@ -123,11 +123,15 @@ def main():
         else:
             print("[SİSTEM] Düşük riskli zincir, Gözlemci LLM bypass edildi.")
 
-        # Ardışık görev yürütme motoru
+        # Ardışık görev yürütme motoru (Dinamik Yeniden Planlama Destekli)
         zincir_basarili = True
         gecici_sonuclar = []
+        max_replans = 2
+        replan_count = 0
+        idx = 0
 
-        for siradaki_gorev in parsed_intent_list:
+        while idx < len(parsed_intent_list):
+            siradaki_gorev = parsed_intent_list[idx]
             act = siradaki_gorev.get("action")
             param = siradaki_gorev.get("parameter")
             print(f"➡️  Alt Görev İşleniyor: Action='{act}' | Parameter={param}")
@@ -139,14 +143,35 @@ def main():
                 zincir_basarili = False  # reboot özel durum, genel başarı mesajı basma
                 break
 
-            onay, sonuc = security.validate_and_execute(drone, act, param)
+            guncel_telemetri = drone.get_telemetry()
+            onay, sonuc = security.validate_and_execute(drone, act, param, telemetri=guncel_telemetri)
             if onay:
                 print(f"   [ONAYLANDI]: {sonuc}")
                 gecici_sonuclar.append(sonuc)
                 logger.log_action(session_id, user_command, act, param, True, sonuc)
+                idx += 1
             else:
-                print(f"   🚨 [GÜVENLİK ENGELİ]: {sonuc} | Görev zinciri KESİLDİ!")
-                logger.log_action(session_id, user_command, act, param, False, f"Zincir kırıldı: {sonuc}")
+                print(f"   🚨 [GÜVENLİK ENGELİ]: {sonuc}")
+                logger.log_action(session_id, user_command, act, param, False, f"Engellendi: {sonuc}")
+                
+                if replan_count < max_replans:
+                    replan_count += 1
+                    print(f"🔄 [DİNAMİK YENİDEN PLANLAMA] Asistan alternatif güvenli rota planlıyor... (Deneme {replan_count}/{max_replans})")
+                    
+                    # LLM'e engeli ve güncel telemetriyi bildirerek yeni bir rota istiyoruz
+                    replan_prompt = f"GÜVENLİK ENGELİ: '{act}' eylemi '{sonuc}' nedeniyle güvenlik katmanına takıldı. Lütfen bu engeli aşacak veya en yakın güvenli alternatif rotayı/eylemi çizecek yeni bir görev zinciri planla. Sadece yeni komut listesini JSON array formatında dön."
+                    
+                    try:
+                        new_intent_list = assistant.parse_command(replan_prompt, drone.get_telemetry())
+                        if new_intent_list and new_intent_list[0].get("action") not in ["invalid", "ambiguous"]:
+                            print(f"   [YENİ ÖNERİLEN ROTA]: {new_intent_list}")
+                            parsed_intent_list = new_intent_list
+                            idx = 0  # Yeni rota zincirini baştan başlat
+                            continue
+                    except Exception as e:
+                        print(f"   [YENİDEN PLANLAMA HATASI]: {e}")
+                
+                print("   🚨 [PLANLAMA BAŞARISIZ]: Güvenli alternatif bulunamadı veya limit aşıldı. Görev zinciri KESİLDİ!")
                 zincir_basarili = False
                 break
 

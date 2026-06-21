@@ -36,6 +36,10 @@ class PilotAssistant:
         - 'complete_checklist': Pilot kalkış öncesi kontrollerin tamam olduğunu belirttiğinde ("kontroller tamam", "hazırız", "pervaneler ve gps tamam" vb.) çalıştırılır. Parametre almaz.
         - 'invalid'/'ambiguous'
         
+        GÜVENLİK VE YENİDEN PLANLAMA (REPLANNING) KURALI:
+        - Eğer sistem sana "GÜVENLİK ENGELİ: [Hata Nedeni]" şeklinde bir girdi verirse, bir önceki planının güvenlik katmanına takıldığını anla.
+        - Telemetriye (özellikle Geofence sınırlarına veya bataryaya) bakarak pilotun asıl gitmek istediği yere en yakın güvenli alternatif rotayı çiz (Örn: Geofence sınırını aşan tek bir büyük adım yerine, sınır içinde kalacak şekilde yön değiştirip dolanarak giden hareketler planla).
+        
         ÇIKTI FORMATI (ÇOK KRİTİK):
         YALNIZCA geçerli bir JSON LİSTESİ (ARRAY) dönmelisin. Tek bir komut dahi olsa liste içinde olmalıdır.
         Açıklama veya markdown kodu ekleme. 

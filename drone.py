@@ -1,6 +1,12 @@
 # drone.py
 import time
 
+try:
+    from pymavlink import mavutil
+    MAVLINK_AVAILABLE = True
+except ImportError:
+    MAVLINK_AVAILABLE = False
+
 class Drone:
     def __init__(self, drone_config=None):
         self.x = 0.0          
@@ -26,6 +32,24 @@ class Drone:
         else:
             self.wind_speed = 15.0
 
+        # MAVLink Ayarları
+        self.mavlink_enabled = drone_config.get("mavlink_enabled", False) if drone_config else False
+        self.mavlink_conn = None
+        if self.mavlink_enabled:
+            if MAVLINK_AVAILABLE:
+                connection_string = drone_config.get("mavlink_connection_string", "udpin:localhost:14540")
+                try:
+                    print(f"🔗 [MAVLINK] {connection_string} adresine bağlanılıyor...")
+                    self.mavlink_conn = mavutil.mavlink_connection(connection_string)
+                    self.mavlink_conn.wait_heartbeat(timeout=2.0)
+                    print("✅ [MAVLINK] Bağlantı başarılı! Kalp atışı (heartbeat) alındı.")
+                except Exception as e:
+                    print(f"⚠️ [MAVLINK BAĞLANTI UYARISI]: {e}. Yerel simülasyona geçildi.")
+                    self.mavlink_enabled = False
+            else:
+                print("⚠️ [MAVLINK UYARISI]: 'pymavlink' kütüphanesi yüklü değil! Yerel simülasyona geçildi.")
+                self.mavlink_enabled = False
+
     def _update_battery_consumption(self):
         if self.in_air and self.takeoff_time is not None:
             gecen_sure = time.time() - self.takeoff_time
@@ -41,7 +65,29 @@ class Drone:
                     print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] BATARYA %0! MOTOR KESİLDİ!")
                     self.emergency_stop()
 
+    def _recv_mavlink_telemetry(self):
+        if not (self.mavlink_enabled and self.mavlink_conn):
+            return
+        try:
+            while True:
+                msg = self.mavlink_conn.recv_msg()
+                if not msg:
+                    break
+                msg_type = msg.get_type()
+                if msg_type == "GLOBAL_POSITION_INT":
+                    self.altitude = float(msg.relative_alt) / 1000.0
+                elif msg_type == "HEARTBEAT":
+                    self.in_air = self.altitude > 0.5
+                elif msg_type == "SYS_STATUS":
+                    self.battery = msg.battery_remaining
+                elif msg_type == "LOCAL_POSITION_NED":
+                    self.y = float(msg.x)  # North
+                    self.x = float(msg.y)  # East
+        except Exception:
+            pass
+
     def get_telemetry(self):
+        self._recv_mavlink_telemetry()
         self._update_battery_consumption()
         return {
             "x": self.x,
@@ -86,8 +132,23 @@ class Drone:
         
         if self.in_air:
             self.altitude = target_altitude
+            self.battery = max(0, self.battery - 5)
             return f"Başarılı: İrtifa {target_altitude} metreye güncellendi."
             
+        if self.mavlink_enabled and self.mavlink_conn:
+            try:
+                # ARM & TAKEOFF
+                self.mavlink_conn.mav.command_long_send(
+                    self.mavlink_conn.target_system, self.mavlink_conn.target_component,
+                    mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0,
+                    1, 0, 0, 0, 0, 0, 0)
+                self.mavlink_conn.mav.command_long_send(
+                    self.mavlink_conn.target_system, self.mavlink_conn.target_component,
+                    mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
+                    0, 0, 0, 0, 0, 0, float(target_altitude))
+            except Exception as e:
+                print(f"[MAVLINK HATA] Takeoff paketi gönderilemedi: {e}")
+
         self.in_air = True 
         self.altitude = target_altitude
         self.mode = "GUIDED" 
@@ -99,6 +160,15 @@ class Drone:
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         self._update_battery_consumption()
         if self.failsafe_active: return "[FAILSAFE AKTİF] İniş esnasında batarya tükendi, sistem kilitlendi."
+        if self.mavlink_enabled and self.mavlink_conn:
+            try:
+                self.mavlink_conn.mav.command_long_send(
+                    self.mavlink_conn.target_system, self.mavlink_conn.target_component,
+                    mavutil.mavlink.MAV_CMD_NAV_LAND, 0,
+                    0, 0, 0, 0, 0, 0, 0)
+            except Exception as e:
+                print(f"[MAVLINK HATA] Land paketi gönderilemedi: {e}")
+
         self.battery = max(0, self.battery - 3)
         self.altitude = 0.0
         self.in_air = False
@@ -118,6 +188,15 @@ class Drone:
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         self._update_battery_consumption()
         if self.failsafe_active: return "[FAILSAFE AKTİF] Eve dönüş esnasında batarya tükendi, sistem kilitlendi."
+
+        if self.mavlink_enabled and self.mavlink_conn:
+            try:
+                self.mavlink_conn.mav.command_long_send(
+                    self.mavlink_conn.target_system, self.mavlink_conn.target_component,
+                    mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH, 0,
+                    0, 0, 0, 0, 0, 0, 0)
+            except Exception as e:
+                print(f"[MAVLINK HATA] RTL paketi gönderilemedi: {e}")
 
         self.battery = max(0, self.battery - 10)
         self.x = self.home_x
@@ -142,6 +221,28 @@ class Drone:
         if self.failsafe_active: return "[FAILSAFE AKTİF] Hareket esnasında batarya tükendi, sistem kilitlendi."
         self.battery = max(0, self.battery - 2)
         
+        if self.mavlink_enabled and self.mavlink_conn:
+            try:
+                n_offset = 0.0
+                e_offset = 0.0
+                if direction in ["kuzey", "north", "ileri"]: n_offset = distance
+                elif direction in ["güney", "south", "geri"]: n_offset = -distance
+                elif direction in ["doğu", "east", "sağ"]: e_offset = distance
+                elif direction in ["batı", "west", "sol"]: e_offset = -distance
+                
+                self.mavlink_conn.mav.set_position_target_local_ned_send(
+                    0,
+                    self.mavlink_conn.target_system, self.mavlink_conn.target_component,
+                    mavutil.mavlink.MAV_FRAME_LOCAL_OFFSET_NED,
+                    0b110111111000,
+                    float(n_offset), float(e_offset), 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0
+                )
+            except Exception as e:
+                print(f"[MAVLINK HATA] Move paketi gönderilemedi: {e}")
+
         distance = float(distance)
         direction = direction.lower()
 

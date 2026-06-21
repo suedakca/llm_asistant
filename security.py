@@ -8,8 +8,9 @@ class SecurityLayer:
         self.geofence_boundary = float(config_dict["geofence_boundary"])
         self.max_wind_speed = float(config_dict.get("max_wind_speed", 30.0))
 
-    def validate_and_execute(self, drone, action, parameter=None):
-        telemetri = drone.get_telemetry() 
+    def validate_and_execute(self, drone, action, parameter=None, telemetri=None):
+        if telemetri is None:
+            telemetri = drone.get_telemetry()
         if telemetri["failsafe"]:
             return False, "Sistem Failsafe modunda kilitli!"
         
