@@ -59,13 +59,6 @@ def main():
     print("🎙️  Sesli komut moduna geçmek için mikrofona konuşma tetiklerini kullanabilirsiniz.")
 
     while True:
-        current_telemetry = drone.get_telemetry()
-
-        # Batarya tükenme failsafe'ini bir kez logla, modu kilitle
-        if current_telemetry["failsafe"] and drone.mode == "EMERGENCY_LAND":
-            logger.log_action(session_id, "SİSTEM_OTOMATİK_BATARYA_KAYBI", "EMERGENCY_STOP", None, True, "Otomatik batarya tükenme failsafe tetiklendi.")
-            drone.mode = "CRASHED_LOCKED"
-
         # Giriş yöntemi seç
         giriş_tipi = input("\nGiriş Yöntemi [K: Klavye / S: Sesli Komut / Ç: Çıkış]: ").lower().strip()
 
@@ -85,6 +78,14 @@ def main():
 
         if not user_command.strip():
             continue
+
+        # Komut alındıktan sonra güncel telemetriyi çek
+        current_telemetry = drone.get_telemetry()
+
+        # Batarya tükenme failsafe'ini bir kez logla, modu kilitle
+        if current_telemetry["failsafe"] and drone.mode == "EMERGENCY_LAND":
+            logger.log_action(session_id, "SİSTEM_OTOMATİK_BATARYA_KAYBI", "EMERGENCY_STOP", None, True, "Otomatik batarya tükenme failsafe tetiklendi.")
+            drone.mode = "CRASHED_LOCKED"
 
         # Acil durdurma — LLM'i bypass eder
         if user_command.upper() in emergency_words:
@@ -137,6 +138,11 @@ def main():
             print(f"➡️  Alt Görev İşleniyor: Action='{act}' | Parameter={param}")
 
             if act == "reboot":
+                if drone.in_air:
+                    print("   🚨 [GÜVENLİK ENGELİ]: Havada iken reboot yapılamaz. Önce iniş yapın.")
+                    logger.log_action(session_id, user_command, "reboot", None, False, "Güvenlik reddi: havada reboot isteği")
+                    zincir_basarili = False
+                    break
                 sonuc = drone.reboot()
                 print(sonuc)
                 logger.log_action(session_id, user_command, "reboot", None, True, sonuc)

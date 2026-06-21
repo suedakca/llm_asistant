@@ -72,8 +72,8 @@ def animate(i):
         elif guvenlik_onayi and action == "return_to_home":
             current_x, current_y = home_x, home_y  # Drone evine döndü
 
-        # Rota geçmişini yalnızca konum değiştiren eylemlerde güncelle
-        if guvenlik_onayi and action in ["move", "return_to_home", "set_home"]:
+        # Rota geçmişini yalnızca drone'un fiziksel konumunu değiştiren eylemlerde güncelle
+        if guvenlik_onayi and action in ["move", "return_to_home"]:
             x_coords.append(current_x)
             y_coords.append(current_y)
 

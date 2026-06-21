@@ -124,7 +124,9 @@ class Drone:
         self.failsafe_active = False
         self.checklist_completed = False
         self.mode = "DISARMED"
-        self.battery = 100 
+        self.battery = 100
+        self.takeoff_time = None
+        self._battery_debt = 0.0
         return "Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı. Kontrol listesi sıfırlandı."
 
     def takeoff(self, target_altitude):
@@ -133,6 +135,9 @@ class Drone:
         if self.in_air:
             self.altitude = target_altitude
             self.battery = max(0, self.battery - 5)
+            if self.battery <= 0 and not self.failsafe_active:
+                self.emergency_stop()
+                return "[FAILSAFE AKTİF] İrtifa güncellemesi esnasında batarya tükendi, sistem kilitlendi."
             return f"Başarılı: İrtifa {target_altitude} metreye güncellendi."
             
         if self.mavlink_enabled and self.mavlink_conn:
@@ -220,7 +225,10 @@ class Drone:
         self._update_battery_consumption()
         if self.failsafe_active: return "[FAILSAFE AKTİF] Hareket esnasında batarya tükendi, sistem kilitlendi."
         self.battery = max(0, self.battery - 2)
-        
+        if self.battery <= 0 and not self.failsafe_active:
+            self.emergency_stop()
+            return "[FAILSAFE AKTİF] Hareket esnasında batarya tükendi, sistem kilitlendi."
+
         if self.mavlink_enabled and self.mavlink_conn:
             try:
                 n_offset = 0.0
