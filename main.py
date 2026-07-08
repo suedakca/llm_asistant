@@ -46,6 +46,12 @@ def main():
     security = SecurityLayer(config["drone_settings"])
     logger = ProjectLogger()
 
+    # Pygame Fizik Simülatörünü başlat (MAVLink kapalıysa)
+    if not drone.mavlink_enabled:
+        from simulator import start_simulator_thread
+        start_simulator_thread()
+        print("🎮 [SİSTEM] Pygame 2B Fizik Simülatörü başlatıldı.")
+
     try:
         assistant = PilotAssistant(config["llm_settings"])
     except ValueError as e:

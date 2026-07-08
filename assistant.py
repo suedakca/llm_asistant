@@ -16,7 +16,6 @@ class PilotAssistant:
         self.model_name = config_dict["model_name"]
         self.temp = config_dict["temperature"]
         
-        # [DÜZELTME] Liste (Array) formatında çıktı üretmesi için instruction güncellendi
         asistan_instruction = """
         Sen bir İHA Pilot Asistanısın. Pilotla derin bir konuşma hafızasına sahip akıllı bir agentsın.
         Görevin, pilotun tekli veya çoklu/zincirleme komutlarını analiz edip sırasıyla çalıştırılacak bir komut listesi üretmektir.

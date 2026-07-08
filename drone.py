@@ -2,6 +2,12 @@
 import time
 
 try:
+    from simulator import global_simulator
+    SIMULATOR_AVAILABLE = True
+except ImportError:
+    SIMULATOR_AVAILABLE = False
+
+try:
     from pymavlink import mavutil
     MAVLINK_AVAILABLE = True
 except ImportError:
@@ -21,6 +27,7 @@ class Drone:
         self.failsafe_active = False
         self.checklist_completed = False
         self._battery_debt = 0.0  # kesirli tüketim birikimi
+        self.sim = global_simulator if SIMULATOR_AVAILABLE else None
 
         if drone_config and "battery_drain_per_second" in drone_config:
             self.drain_rate = float(drone_config["battery_drain_per_second"])
@@ -32,7 +39,6 @@ class Drone:
         else:
             self.wind_speed = 15.0
 
-        # MAVLink Ayarları
         self.mavlink_enabled = drone_config.get("mavlink_enabled", False) if drone_config else False
         self.mavlink_conn = None
         if self.mavlink_enabled:
@@ -87,7 +93,23 @@ class Drone:
             pass
 
     def get_telemetry(self):
-        self._recv_mavlink_telemetry()
+        if self.mavlink_enabled:
+            self._recv_mavlink_telemetry()
+        else:
+            if self.sim:
+                # Sync simulated physics state to local attributes
+                self.x = self.sim.x
+                self.y = 0.0  # Yatay kuzey/güney 2B simülatörde kullanılmıyor
+                self.altitude = self.sim.y
+                self.in_air = self.sim.in_air
+
+                # Sync control states back to the simulator
+                self.sim.battery = float(self.battery)
+                self.sim.checklist_completed = self.checklist_completed
+                self.sim.failsafe = self.failsafe_active
+                self.sim.mode = self.mode
+                self.sim.wind_speed = self.wind_speed
+
         self._update_battery_consumption()
         return {
             "x": self.x,
@@ -134,6 +156,8 @@ class Drone:
         
         if self.in_air:
             self.altitude = target_altitude
+            if not self.mavlink_enabled and self.sim:
+                self.sim.target_y = float(target_altitude)
             self.battery = max(0, self.battery - 5)
             if self.battery <= 0 and not self.failsafe_active:
                 self.emergency_stop()
@@ -154,6 +178,10 @@ class Drone:
             except Exception as e:
                 print(f"[MAVLINK HATA] Takeoff paketi gönderilemedi: {e}")
 
+        if not self.mavlink_enabled and self.sim:
+            self.sim.target_y = float(target_altitude)
+            self.sim.in_air = True
+
         self.in_air = True 
         self.altitude = target_altitude
         self.mode = "GUIDED" 
@@ -173,6 +201,10 @@ class Drone:
                     0, 0, 0, 0, 0, 0, 0)
             except Exception as e:
                 print(f"[MAVLINK HATA] Land paketi gönderilemedi: {e}")
+
+        if not self.mavlink_enabled and self.sim:
+            self.sim.target_y = 0.0
+            self.sim.target_x = 0.0
 
         self.battery = max(0, self.battery - 3)
         self.altitude = 0.0
@@ -202,6 +234,10 @@ class Drone:
                     0, 0, 0, 0, 0, 0, 0)
             except Exception as e:
                 print(f"[MAVLINK HATA] RTL paketi gönderilemedi: {e}")
+
+        if not self.mavlink_enabled and self.sim:
+            self.sim.target_x = self.home_x
+            self.sim.target_y = 0.0
 
         self.battery = max(0, self.battery - 10)
         self.x = self.home_x
@@ -250,6 +286,13 @@ class Drone:
                 )
             except Exception as e:
                 print(f"[MAVLINK HATA] Move paketi gönderilemedi: {e}")
+
+        if not self.mavlink_enabled and self.sim:
+            # 2D düzlemde yatay hareketleri simülatörün x hedefine yönlendir
+            if direction in ["kuzey", "north", "ileri", "doğu", "east", "sağ"]:
+                self.sim.target_x += float(distance)
+            elif direction in ["güney", "south", "geri", "batı", "west", "sol"]:
+                self.sim.target_x -= float(distance)
 
         distance = float(distance)
         direction = direction.lower()
