@@ -77,6 +77,17 @@ class DroneSimulator:
                 self.theta = 0.0
             return
 
+        # Araç yerde ve kalkış komutu yoksa: park halinde tut.
+        # Aksi halde rüzgar kuvveti motorlar kapalıyken bile aracı sürükler.
+        if not self.in_air and self.target_y <= 0.0 and self.y <= 0.0:
+            self.y = 0.0
+            self.vx = 0.0
+            self.vy = 0.0
+            self.omega = 0.0
+            self.theta = 0.0
+            self.wind_force_x = 0.0
+            return
+
         # Rüzgarın İHA'ya yatay etkisi (basit kuvvet)
         self.wind_force_x = (self.wind_speed * 0.05) * math.sin(time.time() * 0.5)
 

@@ -7,10 +7,19 @@ from security import SecurityLayer
 from assistant import PilotAssistant
 from logger import ProjectLogger
 
+
 def get_voice_input():
     """ Mikrofondan ses kaydı alıp Türkçe metne dönüştürür """
     r = sr.Recognizer()
-    with sr.Microphone() as source:
+    try:
+        mic = sr.Microphone()
+    except (AttributeError, OSError) as e:
+        # PyAudio yüklü değil veya mikrofon bulunamadı — programı çökertmeden geç
+        print(f"❌ [SİSTEM] Sesli komut kullanılamıyor: {e}")
+        print("   'pip3 install pyaudio' ile kurabilirsiniz. Şimdilik klavye (K) kullanın.")
+        return ""
+
+    with mic as source:
         print("\n🎤 [MİKROFON] Dinleniyor... Konuşun...")
         # Ortam gürültüsünü otomatik dengeler
         r.adjust_for_ambient_noise(source, duration=0.5)
@@ -18,7 +27,7 @@ def get_voice_input():
             # En fazla 5 saniye sessizlik bekler, 10 saniyelik komut alabilir
             audio = r.listen(source, timeout=5, phrase_time_limit=20)
             print("⏳ [SİSTEM] Ses işleniyor, metne dökülüyor...")
-            
+
             # Google Speech-to-Text motorunu Türkçe diliyle tetikliyoruz
             text = r.recognize_google(audio, language="tr-TR")
             print(f"🗣️  [SESLİ KOMUT ALGILANDI]: \"{text}\"")
@@ -33,30 +42,9 @@ def get_voice_input():
             print(f"❌ [SİSTEM] Google STT Servis Hatası: {e}")
             return ""
 
-def main():
-    session_id = uuid.uuid4()
-    
-    try:
-        with open("config.yaml", "r", encoding="utf-8") as f: 
-            config = yaml.safe_load(f)
-    except Exception as e:
-        print(f"Config yüklenemedi: {e}"); return
-
-    drone = Drone(config["drone_settings"])
-    security = SecurityLayer(config["drone_settings"])
-    logger = ProjectLogger()
-
-    # Pygame Fizik Simülatörünü başlat (MAVLink kapalıysa)
-    if not drone.mavlink_enabled:
-        from simulator import start_simulator_thread
-        start_simulator_thread()
-        print("🎮 [SİSTEM] Pygame 2B Fizik Simülatörü başlatıldı.")
-
-    try:
-        assistant = PilotAssistant(config["llm_settings"])
-    except ValueError as e:
-        print(f"\n❌ [SİSTEM BAŞLATMA HATASI]: {e}"); return
-
+def run_command_loop(drone, security, assistant, logger, config, session_id, simulator=None):
+    """ Pilot komutlarını okuyan ve işleyen ana döngü. Simülatör varsa ana thread'de
+        pygame penceresi çalışırken bu döngü arka thread'de çalışır. """
     emergency_words = config["safety_settings"]["emergency_keywords"]
     high_risk_list = config["llm_settings"]["high_risk_actions"]
 
@@ -70,6 +58,8 @@ def main():
 
         if giriş_tipi in ["ç", "çıkış", "exit"]:
             logger.print_session_summary(session_id, drone.get_telemetry())
+            if simulator is not None:
+                simulator.running = False  # Pygame penceresini de kapat
             break
 
         if giriş_tipi == "s":
@@ -192,6 +182,44 @@ def main():
 
         t = drone.get_telemetry()
         print(f"-> [Son Durum] İrtifa: {t['altitude']}m | Batarya: %{t['battery']} | Konum: ({t['x']},{t['y']}) | Kilitli: {t['failsafe']}")
+
+
+def main():
+    session_id = uuid.uuid4()
+
+    try:
+        with open("config.yaml", "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        print(f"Config yüklenemedi: {e}"); return
+
+    drone = Drone(config["drone_settings"])
+    security = SecurityLayer(config["drone_settings"])
+    logger = ProjectLogger()
+
+    try:
+        assistant = PilotAssistant(config["llm_settings"])
+    except ValueError as e:
+        print(f"\n❌ [SİSTEM BAŞLATMA HATASI]: {e}"); return
+
+    # MAVLink kapalıysa görsel Pygame fizik simülatörünü kullan.
+    # macOS'ta pygame/SDL penceresi ANA thread'de açılmalıdır; bu yüzden
+    # komut döngüsünü arka thread'e alıp pencereyi ana thread'de çalıştırıyoruz.
+    if not drone.mavlink_enabled:
+        import threading
+        from simulator import global_simulator
+
+        loop_thread = threading.Thread(
+            target=run_command_loop,
+            args=(drone, security, assistant, logger, config, session_id, global_simulator),
+            daemon=True,
+        )
+        loop_thread.start()
+        print("🎮 [SİSTEM] Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
+        global_simulator.run_pygame()  # Ana thread'de bloke eder (pencere kapanınca döner)
+    else:
+        run_command_loop(drone, security, assistant, logger, config, session_id, simulator=None)
+
 
 if __name__ == "__main__":
     main()

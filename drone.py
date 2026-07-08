@@ -37,7 +37,7 @@ class Drone:
         if drone_config and "simulated_wind_speed" in drone_config:
             self.wind_speed = float(drone_config["simulated_wind_speed"])
         else:
-            self.wind_speed = 15.0
+            self.wind_speed = 5.0
 
         self.mavlink_enabled = drone_config.get("mavlink_enabled", False) if drone_config else False
         self.mavlink_conn = None
@@ -138,6 +138,12 @@ class Drone:
         self.in_air = False
         self.mode = "EMERGENCY_LAND"
         self._battery_debt = 0.0
+        # Görsel simülatörü de failsafe'e al: motorlar kesilir, araç olduğu yerde düşer
+        if not self.mavlink_enabled and self.sim:
+            self.sim.failsafe = True
+            self.sim.in_air = False
+            self.sim.vx = 0.0  # Yatay savrulmayı durdur (dik düşüş)
+            self.sim.vy = 0.0
         return "[FAILSAFE AKTİF] Motor kesildi! İHA yere indirildi ve sistem kilitlendi."
 
     def reboot(self):
@@ -149,6 +155,21 @@ class Drone:
         self.battery = 100
         self.takeoff_time = None
         self._battery_debt = 0.0
+        self.x = 0.0
+        self.y = 0.0
+        self.altitude = 0.0
+        # Görsel simülatörü de sıfırla: aracı başlangıç (home) noktasına indir
+        if not self.mavlink_enabled and self.sim:
+            self.sim.failsafe = False
+            self.sim.in_air = False
+            self.sim.target_x = 0.0
+            self.sim.target_y = 0.0
+            self.sim.x = 0.0
+            self.sim.y = 0.0
+            self.sim.vx = 0.0
+            self.sim.vy = 0.0
+            self.sim.theta = 0.0
+            self.sim.omega = 0.0
         return "Sistem başarıyla yeniden başlatıldı (REBOOT). Kilit kaldırıldı. Kontrol listesi sıfırlandı."
 
     def takeoff(self, target_altitude):
