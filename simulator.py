@@ -365,6 +365,10 @@ class DroneSimulator:
             self.vx = 0.0
             self.theta = 0.0
             self.omega = 0.0
+            # Hedef yer seviyesindeyse (iniş/eve dönüş sonrası) yere değince
+            # 'havada' bayrağını temizle — böylece reboot gibi yer komutları çalışır.
+            if self.target_y <= 0.0:
+                self.in_air = False
 
         # Rota geçmişi ve pervane dönüş açısı güncelleme
         if not hasattr(self, "trail_history"):
@@ -385,104 +389,208 @@ class DroneSimulator:
 
     def run_pygame(self):
         pygame.init()
-        screen = pygame.display.set_mode((1200, 600))
-        pygame.display.set_caption("2B Fizik Motorlu İHA Simülatörü ve Kontrol Paneli")
+        WIDTH, HEIGHT = 1400, 800
+        screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("İHA Yer Kontrol İstasyonu — Uçuş Kontrol Merkezi")
         clock = pygame.time.Clock()
 
-        # Renkler
-        BG_COLOR = (30, 30, 40)
-        WHITE = (240, 240, 240)
-        GREEN = (46, 204, 113)
-        RED = (231, 76, 60)
-        BLUE = (52, 152, 219)
-        ORANGE = (230, 126, 34)
-        
-        # Sidebar Renkleri
-        SIDEBAR_BG = (20, 20, 28)
-        SIDEBAR_BORDER = (45, 45, 60)
-        BTN_ACTIVE_BG = (52, 152, 219)
-        BTN_INACTIVE_BG = (44, 62, 80)
-        TEXTBOX_BG = (12, 12, 18)
-        TEXTBOX_BORDER_FOCUSED = (52, 152, 219)
-        TEXTBOX_BORDER_UNFOCUSED = (60, 60, 80)
-        LOG_CONSOLE_BG = (10, 10, 14)
+        # ============================================================
+        #  T A S A R I M   S I S T E M I  (Renk Paleti — Aviation Dark)
+        # ============================================================
+        BG_DEEP     = (10, 14, 22)     # Ana zemin
+        HEADER_BG   = (14, 19, 30)     # Üst başlık çubuğu
+        PANEL       = (18, 24, 36)     # Kart zemini
+        PANEL_2     = (23, 30, 45)     # İç yüzey / stat tile
+        PANEL_INSET = (11, 15, 24)     # Konsol / textbox iç zemin
+        BORDER      = (38, 48, 68)     # İnce kenarlık
+        BORDER_HI   = (58, 74, 102)    # Vurgulu kenarlık
+        TEXT        = (226, 232, 244)  # Ana metin
+        TEXT_DIM    = (140, 152, 174)  # İkincil metin
+        TEXT_MUTE   = (86, 98, 120)    # Silik metin
+        ACCENT      = (56, 189, 248)   # Camgöbeği vurgu
+        TEAL        = (45, 212, 191)   # Teal
+        OK          = (52, 211, 153)   # Yeşil
+        WARN        = (251, 191, 36)   # Amber
+        DANGER      = (248, 113, 113)  # Kırmızı
+        DANGER_DEEP = (60, 22, 30)     # Koyu kırmızı zemin
+        VIOLET      = (167, 139, 250)  # Mor
 
-        # Fonts
+        def sh(c, d):
+            return tuple(max(0, min(255, x + d)) for x in c)
+
+        def lerp(a, b, t):
+            return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+        # ---- Yazı Tipleri ----
+        UI = "Helvetica Neue,Segoe UI,Arial"
+        MONO = "Menlo,Consolas,Courier New"
         try:
-            title_font = pygame.font.SysFont("Arial", 18, bold=True)
-            status_font = pygame.font.SysFont("Arial", 14, bold=True)
-            btn_font = pygame.font.SysFont("Arial", 13, bold=True)
-            txt_font = pygame.font.SysFont("Arial", 14)
-            telemetry_font = pygame.font.SysFont("Courier", 15, bold=True)
-            log_font = pygame.font.SysFont("Courier", 12)
+            f_h1      = pygame.font.SysFont(UI, 19, bold=True)
+            f_title   = pygame.font.SysFont(UI, 12, bold=True)
+            f_body    = pygame.font.SysFont(UI, 14)
+            f_body_b  = pygame.font.SysFont(UI, 14, bold=True)
+            f_small   = pygame.font.SysFont(UI, 11, bold=True)
+            f_stat    = pygame.font.SysFont(MONO, 21, bold=True)
+            f_statlbl = pygame.font.SysFont(UI, 10, bold=True)
+            f_mono    = pygame.font.SysFont(MONO, 12)
+            f_mono_b  = pygame.font.SysFont(MONO, 13, bold=True)
+            f_tick    = pygame.font.SysFont(MONO, 10)
         except Exception:
-            title_font = pygame.font.SysFont("Courier", 18, bold=True)
-            status_font = pygame.font.SysFont("Courier", 14, bold=True)
-            btn_font = pygame.font.SysFont("Courier", 13, bold=True)
-            txt_font = pygame.font.SysFont("Courier", 14)
-            telemetry_font = pygame.font.SysFont("Courier", 15, bold=True)
-            log_font = pygame.font.SysFont("Courier", 12)
+            f_h1 = f_title = f_body = f_body_b = f_small = pygame.font.SysFont("Courier", 14, bold=True)
+            f_stat = f_statlbl = f_mono = f_mono_b = f_tick = pygame.font.SysFont("Courier", 12)
 
-        # Button Rects
-        btn_sesli = pygame.Rect(25, 90, 165, 38)
-        btn_klavye = pygame.Rect(200, 90, 165, 38)
-        textbox_rect = pygame.Rect(20, 170, 280, 38)
-        btn_gonder = pygame.Rect(308, 170, 70, 38)
-        btn_reboot = pygame.Rect(20, 498, 360, 34)
-        btn_abort = pygame.Rect(20, 540, 360, 38)
+        # ---- Layout Sabitleri ----
+        HEAD_H = 54
+        PANEL_W = 430                 # Sol kontrol paneli genişliği
+        VP_X, VP_Y = PANEL_W, HEAD_H  # Simülasyon görüntü alanı
+        VP_W, VP_H = WIDTH - PANEL_W, HEIGHT - HEAD_H
+        center_x = VP_X + VP_W // 2
+        ground_y = 636
+        scale_x, scale_y = 6.0, 9.0
 
-        def draw_button(rect, text, base_color, text_color, hover=False, border_color=None):
-            bg = tuple(max(0, min(255, c + 25)) for c in base_color) if hover else base_color
-            pygame.draw.rect(screen, bg, rect, border_radius=6)
-            if border_color or hover:
-                b_color = border_color if border_color else (100, 180, 255)
-                pygame.draw.rect(screen, b_color, rect, 2, border_radius=6)
-            txt_sf = btn_font.render(text, True, text_color)
-            txt_rect = txt_sf.get_rect(center=rect.center)
-            screen.blit(txt_sf, txt_rect)
+        # ---- Buton / Etkileşim Alanları ----
+        btn_voice  = pygame.Rect(26, 150, 182, 36)
+        btn_key    = pygame.Rect(216, 150, 182, 36)
+        textbox_rect = pygame.Rect(28, 246, 300, 34)
+        btn_send   = pygame.Rect(334, 246, 68, 34)
+        btn_reboot = pygame.Rect(28, 682, 374, 40)
+        btn_abort  = pygame.Rect(28, 730, 374, 42)
 
-        # GCS Modern Colors
-        DARK_BG = (10, 10, 14)
-        CARD_BG = (20, 20, 28)
-        CARD_BORDER = (45, 45, 60)
-        NEON_CYAN = (0, 229, 255)
-        NEON_GREEN = (0, 230, 118)
-        NEON_RED = (255, 23, 68)
-        NEON_ORANGE = (255, 145, 0)
-        GRID_COLOR = (20, 20, 28)
+        # ---- Degrade Gökyüzü (bir kez hesapla) ----
+        sky_h = ground_y - VP_Y
+        sky_surface = pygame.Surface((VP_W, sky_h))
+        for i in range(sky_h):
+            sky_surface.fill(lerp((12, 16, 26), (24, 33, 50), i / sky_h), (0, i, VP_W, 1))
+
+        # ---- Vinyet (kenarları karartan sinematik derinlik) ----
+        vignette = pygame.Surface((VP_W, VP_H), pygame.SRCALPHA)
+        vcx, vcy = VP_W / 2, VP_H * 0.42
+        vmax = math.hypot(vcx, vcy)
+        # Yumuşak radyal vinyet — köşelere doğru koyulaşan alfa
+        for yy in range(0, VP_H, 3):
+            d = abs(yy - vcy) / vmax
+            a = int(120 * max(0, d - 0.15) ** 1.4)
+            if a > 0:
+                pygame.draw.rect(vignette, (4, 7, 12, a), (0, yy, VP_W, 3))
+        for xx in range(0, VP_W, 3):
+            d = abs(xx - vcx) / vmax
+            a = int(70 * max(0, d - 0.25) ** 1.5)
+            if a > 0:
+                pygame.draw.rect(vignette, (4, 7, 12, a), (xx, 0, 3, VP_H))
+
+        # ---- Başlık çubuğu degrade (bir kez hesapla) ----
+        header_surface = pygame.Surface((WIDTH, HEAD_H))
+        for i in range(HEAD_H):
+            header_surface.fill(lerp((20, 27, 42), (13, 18, 28), i / HEAD_H), (0, i, WIDTH, 1))
+
+        # ---- Geofence parlama şeridi (bir kez hesapla) ----
+        fence_h = ground_y - 100
+        fence_glow = pygame.Surface((22, fence_h), pygame.SRCALPHA)
+        for cx in range(22):
+            a = int(26 * (1 - abs(cx - 11) / 11) ** 1.8)
+            if a > 0:
+                pygame.draw.line(fence_glow, (*DANGER, a), (cx, 0), (cx, fence_h))
+
+        # ---- Glow (parlama) — additive yumuşak ışık ----
+        _glow_cache = {}
+        def glow(cx, cy, radius, color, max_alpha=45):
+            key = (radius, color, max_alpha)
+            gs = _glow_cache.get(key)
+            if gs is None:
+                gs = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+                for r in range(radius, 0, -1):
+                    a = int(max_alpha * (1 - r / radius) ** 2.4)
+                    pygame.draw.circle(gs, (*color, a), (radius, radius), r)
+                _glow_cache[key] = gs
+            screen.blit(gs, (int(cx - radius), int(cy - radius)), special_flags=pygame.BLEND_RGB_ADD)
+
+        # ---- Yardımcı Çizim Fonksiyonları ----
+        _shadow_cache = {}
+        def panel_shadow(rect, radius=12):
+            key = (rect.width, rect.height, radius)
+            s = _shadow_cache.get(key)
+            if s is None:
+                pad = 16
+                s = pygame.Surface((rect.width + pad * 2, rect.height + pad * 2), pygame.SRCALPHA)
+                for i, al in enumerate((5, 8, 13, 22)):
+                    off = (3 - i) * 3
+                    pygame.draw.rect(s, (0, 0, 0, al),
+                                     (pad - off, pad - off + 5, rect.width + off * 2, rect.height + off * 2),
+                                     border_radius=radius + off)
+                _shadow_cache[key] = s
+            screen.blit(s, (rect.x - 16, rect.y - 16))
+
+        def draw_panel(rect, fill=PANEL, border=BORDER, radius=12, bw=1, shadow=True):
+            if shadow:
+                panel_shadow(rect, radius)
+            pygame.draw.rect(screen, fill, rect, border_radius=radius)
+            # üst iç ışık kenarı (cam etkisi)
+            hl = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.line(hl, (255, 255, 255, 14), (radius, 1), (rect.width - radius, 1))
+            screen.blit(hl, rect.topleft)
+            if bw:
+                pygame.draw.rect(screen, border, rect, bw, border_radius=radius)
+
+        def panel_header(x, y, text, accent=ACCENT):
+            pygame.draw.rect(screen, accent, (x, y + 1, 3, 12), border_radius=2)
+            screen.blit(f_title.render(text.upper(), True, TEXT_DIM), (x + 11, y))
+
+        def draw_button(rect, text, base, fg=TEXT, hover=False, accent=None, active=False):
+            # dikey degrade dolgu
+            grad = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            top = sh(base, 22 if hover else 12)
+            bot = sh(base, -10)
+            for i in range(rect.height):
+                grad.fill((*lerp(top, bot, i / rect.height), 255), (0, i, rect.width, 1))
+            mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=9)
+            grad.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(grad, rect.topleft)
+            bcol = accent if accent else sh(base, 40)
+            pygame.draw.rect(screen, bcol, rect, 2 if active else 1, border_radius=9)
+            t = f_body_b.render(text, True, fg)
+            screen.blit(t, t.get_rect(center=rect.center))
+
+        def stat_tile(x, y, w, h, label, value, accent):
+            r = pygame.Rect(x, y, w, h)
+            pygame.draw.rect(screen, PANEL_2, r, border_radius=9)
+            hl = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.line(hl, (255, 255, 255, 12), (9, 1), (w - 9, 1))
+            screen.blit(hl, (x, y))
+            pygame.draw.rect(screen, BORDER, r, 1, border_radius=9)
+            pygame.draw.rect(screen, accent, (x + 6, y + h - 3, w - 12, 2), border_radius=2)
+            screen.blit(f_statlbl.render(label.upper(), True, TEXT_MUTE), (x + 11, y + 10))
+            screen.blit(f_stat.render(value, True, accent), (x + 11, y + 26))
 
         while self.running:
-            dt = clock.tick(60) / 1000.0  # 60 FPS
-            if dt > 0.1: dt = 0.1 # Aşırı gecikme koruması
-            
-            # Cursor blink timer
+            dt = clock.tick(60) / 1000.0
+            if dt > 0.1:
+                dt = 0.1
             self.cursor_timer = (self.cursor_timer + dt) % 1.0
 
-            # Mouse positions
             mouse_pos = pygame.mouse.get_pos()
-            hover_sesli = btn_sesli.collidepoint(mouse_pos)
-            hover_klavye = btn_klavye.collidepoint(mouse_pos)
-            hover_gonder = btn_gonder.collidepoint(mouse_pos)
+            hover_voice  = btn_voice.collidepoint(mouse_pos)
+            hover_key    = btn_key.collidepoint(mouse_pos)
+            hover_send   = btn_send.collidepoint(mouse_pos)
             hover_reboot = btn_reboot.collidepoint(mouse_pos)
-            hover_abort = btn_abort.collidepoint(mouse_pos)
+            hover_abort  = btn_abort.collidepoint(mouse_pos)
 
-            # Pygame olaylarını işle
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1: # Left click
-                        if btn_sesli.collidepoint(event.pos):
+                    if event.button == 1:
+                        if btn_voice.collidepoint(event.pos):
                             self.input_mode = "voice"
                             self.is_textbox_focused = False
                             self.get_voice_input_async()
-                        elif btn_klavye.collidepoint(event.pos):
+                        elif btn_key.collidepoint(event.pos):
                             self.input_mode = "keyboard"
                             self.is_textbox_focused = True
                         elif textbox_rect.collidepoint(event.pos):
                             if self.input_mode == "keyboard":
                                 self.is_textbox_focused = True
-                        elif btn_gonder.collidepoint(event.pos):
+                        elif btn_send.collidepoint(event.pos):
                             if self.input_mode == "keyboard" and self.input_text.strip():
                                 self.execute_command_async(self.input_text)
                                 self.input_text = ""
@@ -506,396 +614,337 @@ class DroneSimulator:
                             if event.unicode and event.unicode.isprintable():
                                 self.input_text += event.unicode
 
-            # Fiziği Güncelle
             self.update_physics(dt)
+            screen.fill(BG_DEEP)
 
-            # Ekranı temizle
-            screen.fill(DARK_BG)
+            # ============================================================
+            #  S I M U L A S Y O N   G O R U N T U   A L A N I
+            # ============================================================
+            screen.blit(sky_surface, (VP_X, VP_Y))
 
-            # =================== L E F T   S I D E B A R   (GUI) ===================
-            # Background
-            pygame.draw.rect(screen, (15, 15, 22), (0, 0, 400, 600))
-            pygame.draw.line(screen, (40, 40, 55), (400, 0), (400, 600), 2)
+            # İnce koordinat ızgarası
+            grid_c = (24, 32, 48)
+            for gx in range(VP_X, WIDTH, 48):
+                pygame.draw.line(screen, grid_c, (gx, VP_Y), (gx, ground_y), 1)
+            for gy in range(VP_Y, ground_y, 48):
+                pygame.draw.line(screen, grid_c, (VP_X, gy), (WIDTH, gy), 1)
 
-            # Card 1: Connection & Link Status
-            card_1 = pygame.Rect(12, 12, 376, 126)
-            pygame.draw.rect(screen, CARD_BG, card_1, border_radius=8)
-            pygame.draw.rect(screen, CARD_BORDER, card_1, 1, border_radius=8)
+            # Sinematik vinyet (sky + grid üzerine, enstrümanların altına)
+            screen.blit(vignette, (VP_X, VP_Y))
 
-            # Heartbeat flash LED
-            heartbeat_flash = (time.time() * 3.0) % 2 < 1.0
-            heartbeat_c = NEON_GREEN if heartbeat_flash else (0, 100, 40)
-            pygame.draw.circle(screen, heartbeat_c, (32, 32), 5)
-            if heartbeat_flash:
-                pygame.draw.circle(screen, NEON_GREEN, (32, 32), 8, 1)
+            drone_px = center_x + int(self.x * scale_x)
+            drone_py = ground_y - int(self.y * scale_y)
+            target_px = center_x + int(self.target_x * scale_x)
+            target_py = ground_y - int(self.target_y * scale_y)
 
-            title_lbl = title_font.render("İHA PİLOT BAĞLANTI LİNKİ", True, WHITE)
-            screen.blit(title_lbl, (48, 22))
-
-            # Signal strength bars
-            for s_bar in range(4):
-                pygame.draw.rect(screen, NEON_GREEN if s_bar < 3 else (60, 70, 60), (345 + s_bar*5, 33 - s_bar*3, 3, 3 + s_bar*3))
-
-            status_title = status_font.render("DURUM:", True, (150, 150, 160))
-            screen.blit(status_title, (28, 55))
-            
-            status_color = NEON_GREEN if self.status_message == "HAZIR" else (52, 152, 219)
-            if "DINLENIYOR" in self.status_message or "Ses" in self.status_message:
-                status_color = NEON_ORANGE
-            elif "Hata" in self.status_message or "Reddedildi" in self.status_message:
-                status_color = NEON_RED
-                
-            status_lbl = status_font.render(self.status_message, True, status_color)
-            screen.blit(status_lbl, (84, 55))
-
-            v_color = BTN_ACTIVE_BG if self.input_mode == "voice" else BTN_INACTIVE_BG
-            draw_button(btn_sesli, "🎙️ Sesli Giriş", v_color, WHITE, hover_sesli, border_color=(255, 255, 255) if self.input_mode == "voice" else None)
-            
-            k_color = BTN_ACTIVE_BG if self.input_mode == "keyboard" else BTN_INACTIVE_BG
-            draw_button(btn_klavye, "⌨️ Klavye Girişi", k_color, WHITE, hover_klavye, border_color=(255, 255, 255) if self.input_mode == "keyboard" else None)
-
-            # Card 2: Command console input card
-            card_2 = pygame.Rect(12, 150, 376, 68)
-            pygame.draw.rect(screen, CARD_BG, card_2, border_radius=8)
-            pygame.draw.rect(screen, CARD_BORDER, card_2, 1, border_radius=8)
-
-            tb_border = NEON_CYAN if self.is_textbox_focused else CARD_BORDER
-            pygame.draw.rect(screen, TEXTBOX_BG, textbox_rect, border_radius=6)
-            pygame.draw.rect(screen, tb_border, textbox_rect, 1 if not self.is_textbox_focused else 2, border_radius=6)
-
-            if self.input_text:
-                disp_text = self.input_text
-                if len(disp_text) > 28:
-                    disp_text = "..." + disp_text[-25:]
-                txt_color = WHITE if self.input_mode == "keyboard" else (130, 130, 140)
-                txt_sf = txt_font.render(disp_text, True, txt_color)
-                screen.blit(txt_sf, (30, 180))
-                
-                if self.is_textbox_focused and self.cursor_timer < 0.5:
-                    cursor_x = 30 + txt_sf.get_width() + 2
-                    pygame.draw.line(screen, WHITE, (cursor_x, 182), (cursor_x, 196), 2)
-            else:
-                placeholder = "Buraya komut girin..." if self.input_mode == "keyboard" else "(Klavye moduna geçin)"
-                placeholder_lbl = txt_font.render(placeholder, True, (90, 90, 110))
-                screen.blit(placeholder_lbl, (30, 180))
-                
-                if self.is_textbox_focused and self.cursor_timer < 0.5:
-                    pygame.draw.line(screen, WHITE, (30, 182), (30, 196), 2)
-
-            send_color = NEON_GREEN if self.input_mode == "keyboard" else (40, 50, 45)
-            draw_button(btn_gonder, "Gönder", send_color, WHITE, hover_gonder and self.input_mode == "keyboard")
-
-            # Card 3: Logs box
-            card_3 = pygame.Rect(12, 230, 376, 216)
-            pygame.draw.rect(screen, CARD_BG, card_3, border_radius=8)
-            pygame.draw.rect(screen, CARD_BORDER, card_3, 1, border_radius=8)
-
-            logs_title = title_font.render("TELSİZ VE SİSTEM EVENT GÜNLÜĞÜ", True, (150, 150, 170))
-            screen.blit(logs_title, (25, 240))
-            pygame.draw.rect(screen, LOG_CONSOLE_BG, (20, 265, 360, 170), border_radius=6)
-            pygame.draw.rect(screen, (35, 35, 45), (20, 265, 360, 170), 1, border_radius=6)
-
-            log_lines_to_show = []
-            for raw_line in self.gui_logs:
-                limit = 38
-                if len(raw_line) > limit:
-                    for i in range(0, len(raw_line), limit):
-                        log_lines_to_show.append(raw_line[i:i+limit])
-                else:
-                    log_lines_to_show.append(raw_line)
-            
-            log_y = 272
-            for wl in log_lines_to_show[-7:]:
-                wl_color = (200, 200, 210)
-                if wl.startswith("Pilot:"):
-                    wl_color = (52, 152, 219)
-                elif wl.startswith("Asistan:"):
-                    wl_color = (241, 196, 15)
-                elif wl.startswith("Sistem:") or wl.startswith("Reddedildi:") or wl.startswith("Hata:"):
-                    wl_color = NEON_RED
-                elif wl.startswith("Başarılı:") or wl.startswith("Onaylandı:"):
-                    wl_color = NEON_GREEN
-
-                lbl = log_font.render(wl, True, wl_color)
-                screen.blit(lbl, (30, log_y))
-                log_y += 22
-
-            # Card 4: Failsafe actions
-            card_4 = pygame.Rect(12, 458, 376, 130)
-            pygame.draw.rect(screen, (28, 16, 20), card_4, border_radius=8)
-            e_border = NEON_RED if self.failsafe else CARD_BORDER
-            pygame.draw.rect(screen, e_border, card_4, 1, border_radius=8)
-
-            danger_lbl = title_font.render("CRITICAL ACTION CONSOLE", True, NEON_RED)
-            screen.blit(danger_lbl, (25, 468))
-
-            draw_button(btn_reboot, "🔄 SİSTEMİ YENİDEN BAŞLAT (REBOOT)", (41, 128, 185), WHITE, hover_reboot)
-            draw_button(btn_abort, "🚨 ACİL KİLİTLE / DURDUR (ABORT)", NEON_RED, WHITE, hover_abort)
-
-            # =================== R I G H T   S I M U L A T O R   ===================
-            # HUD coordinates factors
-            scale_x = 5.0
-            scale_y = 8.0
-            
-            drone_px = 800 + int(self.x * scale_x)
-            drone_py = 500 - int(self.y * scale_y)
-
-            target_px = 800 + int(self.target_x * scale_x)
-            target_py = 500 - int(self.target_y * scale_y)
-
-            # 1. HUD/CAD Grid Background
-            for grid_x in range(400, 1200, 50):
-                pygame.draw.line(screen, GRID_COLOR, (grid_x, 0), (grid_x, 600), 1)
-            for grid_y in range(0, 600, 50):
-                pygame.draw.line(screen, GRID_COLOR, (400, grid_y), (1200, grid_y), 1)
-
-            # 2. Advanced Instruments: Top Navigation Compass Tape
-            pygame.draw.rect(screen, (18, 18, 26), (460, 15, 680, 30), border_radius=4)
-            pygame.draw.rect(screen, CARD_BORDER, (460, 15, 680, 30), 1, border_radius=4)
-            
-            center_nav_val = int(self.x)
-            for nav_val in range(center_nav_val - 12, center_nav_val + 13):
-                tick_px = 800 + int((nav_val - self.x) * 20) # 20px spacing per unit
-                if 470 < tick_px < 1130:
-                    # Tick line
-                    pygame.draw.line(screen, (80, 80, 100), (tick_px, 15), (tick_px, 23), 1)
+            # --- Pusula bandı (üst) ---
+            comp = pygame.Rect(center_x - 400, 68, 800, 26)
+            pygame.draw.rect(screen, (14, 20, 32), comp, border_radius=6)
+            pygame.draw.rect(screen, BORDER, comp, 1, border_radius=6)
+            cnav = int(self.x)
+            for nav_val in range(cnav - 12, cnav + 13):
+                tx = center_x + int((nav_val - self.x) * 22)
+                if comp.left + 8 < tx < comp.right - 8:
+                    pygame.draw.line(screen, sh(BORDER_HI, 10), (tx, 70), (tx, 78), 1)
                     if nav_val % 2 == 0:
-                        t_lbl = log_font.render(str(nav_val), True, (150, 150, 170))
-                        t_rect = t_lbl.get_rect(center=(tick_px, 32))
-                        screen.blit(t_lbl, t_rect)
-            # Compass cursor indicator
-            pygame.draw.polygon(screen, NEON_CYAN, [(800, 10), (795, 3), (805, 3)])
+                        tl = f_tick.render(str(nav_val), True, TEXT_MUTE)
+                        screen.blit(tl, tl.get_rect(center=(tx, 87)))
+            pygame.draw.polygon(screen, ACCENT, [(center_x, 66), (center_x - 5, 60), (center_x + 5, 60)])
 
-            # 3. Advanced Instruments: Left Altitude Tape Gauge
-            pygame.draw.rect(screen, (18, 18, 26), (420, 80, 28, 380), border_radius=4)
-            pygame.draw.rect(screen, CARD_BORDER, (420, 80, 28, 380), 1, border_radius=4)
-            
-            center_alt_val = int(self.y)
-            for alt_val in range(max(0, center_alt_val - 15), center_alt_val + 16):
-                tick_py = 270 - int((alt_val - self.y) * 12) # 12px per meter
-                if 90 < tick_py < 450:
-                    pygame.draw.line(screen, (80, 80, 100), (420, tick_py), (428, tick_py), 1)
+            # --- İrtifa bandı (sol) ---
+            alt_g = pygame.Rect(446, 112, 26, 376)
+            pygame.draw.rect(screen, (14, 20, 32), alt_g, border_radius=6)
+            pygame.draw.rect(screen, BORDER, alt_g, 1, border_radius=6)
+            calt = int(self.y)
+            for alt_val in range(max(0, calt - 15), calt + 16):
+                ty = 300 - int((alt_val - self.y) * 12)
+                if alt_g.top + 6 < ty < alt_g.bottom - 6:
+                    pygame.draw.line(screen, sh(BORDER_HI, 10), (446, ty), (454, ty), 1)
                     if alt_val % 2 == 0:
-                        alt_lbl = log_font.render(str(alt_val), True, (150, 150, 170))
-                        screen.blit(alt_lbl, (430, tick_py - 6))
-            # Altitude level indicator pointer
-            pygame.draw.polygon(screen, NEON_CYAN, [(413, 270), (418, 266), (418, 274)])
+                        screen.blit(f_tick.render(str(alt_val), True, TEXT_MUTE), (458, ty - 6))
+            pygame.draw.polygon(screen, ACCENT, [(440, 300), (446, 296), (446, 304)])
 
-            # 4. Advanced Instruments: Right Battery Tape Gauge
-            pygame.draw.rect(screen, (18, 18, 26), (1152, 80, 28, 380), border_radius=4)
-            pygame.draw.rect(screen, CARD_BORDER, (1152, 80, 28, 380), 1, border_radius=4)
-            
-            fill_h = int(372 * (self.battery / 100.0))
-            bat_c = NEON_GREEN if self.battery > 50 else (NEON_ORANGE if self.battery > 20 else NEON_RED)
+            # --- Batarya bandı (sağ) ---
+            bat_g = pygame.Rect(WIDTH - 40, 112, 26, 376)
+            pygame.draw.rect(screen, (14, 20, 32), bat_g, border_radius=6)
+            pygame.draw.rect(screen, BORDER, bat_g, 1, border_radius=6)
+            fill_h = int(370 * (self.battery / 100.0))
+            bat_c = OK if self.battery > 50 else (WARN if self.battery > 20 else DANGER)
             if fill_h > 0:
-                pygame.draw.rect(screen, bat_c, (1155, 80 + 376 - fill_h, 22, fill_h), border_radius=2)
-            
-            for bat_tick in [25, 50, 75, 100]:
-                tick_py = 80 + 376 - int(376 * (bat_tick / 100.0))
-                pygame.draw.line(screen, (100, 100, 120), (1152, tick_py), (1160, tick_py), 1)
-                bat_lbl = log_font.render(f"{bat_tick}%", True, (130, 130, 150))
-                screen.blit(bat_lbl, (1114, tick_py - 6))
+                pygame.draw.rect(screen, bat_c, (bat_g.x + 3, bat_g.bottom - 3 - fill_h, 20, fill_h), border_radius=3)
+                glow(bat_g.centerx, bat_g.bottom - 3 - fill_h, 16, bat_c, max_alpha=40)
+            for bt in [25, 50, 75, 100]:
+                ty = bat_g.bottom - 3 - int(370 * (bt / 100.0))
+                pygame.draw.line(screen, BORDER_HI, (bat_g.x, ty), (bat_g.x + 8, ty), 1)
+                lb = f_tick.render(f"{bt}", True, TEXT_MUTE)
+                screen.blit(lb, lb.get_rect(right=bat_g.x - 4, centery=ty))
 
-            # 5. Advanced Instruments: Central Cockpit Pitch Ladder / Attitude Indicator
-            ladder_center_x = 800
-            ladder_center_y = 270
-            
-            # Draw fixed aircraft cockpit reticle cross
-            pygame.draw.line(screen, NEON_CYAN, (ladder_center_x - 20, ladder_center_y), (ladder_center_x - 6, ladder_center_y), 2)
-            pygame.draw.line(screen, NEON_CYAN, (ladder_center_x + 6, ladder_center_y), (ladder_center_x + 20, ladder_center_y), 2)
-            pygame.draw.line(screen, NEON_CYAN, (ladder_center_x - 6, ladder_center_y), (ladder_center_x - 6, ladder_center_y + 4), 2)
-            pygame.draw.line(screen, NEON_CYAN, (ladder_center_x + 6, ladder_center_y), (ladder_center_x + 6, ladder_center_y + 4), 2)
-            pygame.draw.circle(screen, NEON_CYAN, (ladder_center_x, ladder_center_y), 2)
-
-            # Draw roll scale arc
-            pygame.draw.arc(screen, (60, 60, 80), (ladder_center_x - 55, ladder_center_y - 55, 110, 110), math.radians(30), math.radians(150), 1)
-            for bank_angle in [-30, -15, 0, 15, 30]:
-                ang_rad = math.radians(-bank_angle) - self.theta - math.pi/2
-                t_x = ladder_center_x + int(55 * math.cos(ang_rad))
-                t_y = ladder_center_y + int(55 * math.sin(ang_rad))
-                pygame.draw.circle(screen, (100, 100, 120), (t_x, t_y), 2)
-
-            # Draw rotating pitch lines
+            # --- Attitude / pitch ladder (merkez) ---
+            lcx, lcy = center_x, 290
+            pygame.draw.line(screen, ACCENT, (lcx - 22, lcy), (lcx - 7, lcy), 2)
+            pygame.draw.line(screen, ACCENT, (lcx + 7, lcy), (lcx + 22, lcy), 2)
+            pygame.draw.line(screen, ACCENT, (lcx - 7, lcy), (lcx - 7, lcy + 4), 2)
+            pygame.draw.line(screen, ACCENT, (lcx + 7, lcy), (lcx + 7, lcy + 4), 2)
+            pygame.draw.circle(screen, ACCENT, (lcx, lcy), 2)
+            pygame.draw.arc(screen, BORDER_HI, (lcx - 58, lcy - 58, 116, 116), math.radians(30), math.radians(150), 1)
+            for bank in [-30, -15, 0, 15, 30]:
+                ar = math.radians(-bank) - self.theta - math.pi / 2
+                tx = lcx + int(58 * math.cos(ar))
+                ty = lcy + int(58 * math.sin(ar))
+                pygame.draw.circle(screen, TEXT_MUTE, (tx, ty), 2)
             pitch_deg = math.degrees(self.theta)
-            for pitch_line in [-20, -10, 0, 10, 20]:
-                y_offset = (pitch_line - pitch_deg) * 3.5 # vertical spacing
-                cos_t = math.cos(-self.theta)
-                sin_t = math.sin(-self.theta)
-                
-                p_lx = -25
-                p_rx = 25
-                
-                l_rot_x = int(p_lx * cos_t - y_offset * sin_t) + ladder_center_x
-                l_rot_y = int(p_lx * sin_t + y_offset * cos_t) + ladder_center_y
-                r_rot_x = int(p_rx * cos_t - y_offset * sin_t) + ladder_center_x
-                r_rot_y = int(p_rx * sin_t + y_offset * cos_t) + ladder_center_y
-                
-                l_color = (0, 200, 255) if pitch_line == 0 else (100, 110, 130)
-                pygame.draw.line(screen, l_color, (l_rot_x, l_rot_y), (r_rot_x, r_rot_y), 1 if pitch_line != 0 else 2)
-                
-                # Draw vertical brackets indicators at pitch lines extremities
-                tick_len = 5 if pitch_line >= 0 else -5
-                l_tick_x = l_rot_x + int(tick_len * sin_t)
-                l_tick_y = l_rot_y - int(tick_len * cos_t)
-                r_tick_x = r_rot_x + int(tick_len * sin_t)
-                r_tick_y = r_rot_y - int(tick_len * cos_t)
-                pygame.draw.line(screen, l_color, (l_rot_x, l_rot_y), (l_tick_x, l_tick_y), 1)
-                pygame.draw.line(screen, l_color, (r_rot_x, r_rot_y), (r_tick_x, r_tick_y), 1)
-                
-                # Label value next to extremities
-                val_sf = log_font.render(str(abs(pitch_line)), True, l_color)
-                screen.blit(val_sf, (r_rot_x + 6, r_rot_y - 6))
+            cos_t, sin_t = math.cos(-self.theta), math.sin(-self.theta)
+            for pl in [-20, -10, 0, 10, 20]:
+                yo = (pl - pitch_deg) * 3.5
+                lx = int(-26 * cos_t - yo * sin_t) + lcx
+                ly = int(-26 * sin_t + yo * cos_t) + lcy
+                rx = int(26 * cos_t - yo * sin_t) + lcx
+                ry = int(26 * sin_t + yo * cos_t) + lcy
+                lc = ACCENT if pl == 0 else (112, 124, 148)
+                pygame.draw.line(screen, lc, (lx, ly), (rx, ry), 2 if pl == 0 else 1)
+                vs = f_tick.render(str(abs(pl)), True, lc)
+                screen.blit(vs, (rx + 6, ry - 6))
 
-            # 6. Runway Ground Concrete Layout & Neon Marking Strip
-            pygame.draw.rect(screen, (15, 15, 20), (400, 500, 800, 100))
-            pygame.draw.line(screen, (52, 152, 219), (400, 500), (1200, 500), 3) # Neon Blue edge
-            for mark_x in range(425, 1200, 80):
-                pygame.draw.line(screen, (100, 110, 120), (mark_x, 500), (mark_x + 30, 500), 1)
+            # --- Zemin / pist ---
+            pygame.draw.rect(screen, (16, 21, 30), (VP_X, ground_y, VP_W, HEIGHT - ground_y))
+            pygame.draw.line(screen, ACCENT, (VP_X, ground_y), (WIDTH, ground_y), 2)
+            for mx in range(VP_X + 25, WIDTH, 80):
+                pygame.draw.line(screen, (70, 82, 100), (mx, ground_y), (mx + 34, ground_y), 1)
 
-            # 7. Draw Geofence boundaries
-            fence_pulse = int(3 * math.sin(time.time() * 4.0))
-            sol_fence_x = 800 - int(50*scale_x)
-            sag_fence_x = 800 + int(50*scale_x)
-            
-            pygame.draw.line(screen, (231, 76, 60), (sol_fence_x, 50), (sol_fence_x, 500), 2)
-            pygame.draw.line(screen, (231, 76, 60), (sag_fence_x, 50), (sag_fence_x, 500), 2)
-            pygame.draw.line(screen, (200, 50, 50), (sol_fence_x + 5 + fence_pulse, 50), (sol_fence_x + 5 + fence_pulse, 500), 1)
-            pygame.draw.line(screen, (200, 50, 50), (sag_fence_x - 5 - fence_pulse, 50), (sag_fence_x - 5 - fence_pulse, 500), 1)
+            # --- Geofence sınırları ---
+            fp = int(3 * math.sin(time.time() * 4.0))
+            sol_f = center_x - int(50 * scale_x)
+            sag_f = center_x + int(50 * scale_x)
+            for fx, off in ((sol_f, 1), (sag_f, -1)):
+                screen.blit(fence_glow, (fx - 11, 100), special_flags=pygame.BLEND_RGB_ADD)
+                pygame.draw.line(screen, DANGER, (fx, 100), (fx, ground_y), 2)
+                pygame.draw.line(screen, sh(DANGER_DEEP, 60), (fx + off * (5 + fp), 100), (fx + off * (5 + fp), ground_y), 1)
 
-            # 8. Glowing Flight Path Trail
+            # --- Uçuş rota izi (parlayan) ---
             if hasattr(self, "trail_history") and len(self.trail_history) > 1:
-                num_points = len(self.trail_history)
-                for i in range(1, num_points):
-                    p1_sim_x, p1_sim_y = self.trail_history[i-1]
-                    p2_sim_x, p2_sim_y = self.trail_history[i]
-                    
-                    p1_px = 800 + int(p1_sim_x * scale_x)
-                    p1_py = 500 - int(p1_sim_y * scale_y)
-                    p2_px = 800 + int(p2_sim_x * scale_x)
-                    p2_py = 500 - int(p2_sim_y * scale_y)
-                    
-                    factor = i / num_points
-                    r = int(10 + (0 - 10) * factor)
-                    g = int(20 + (229 - 20) * factor)
-                    b = int(30 + (255 - 30) * factor)
-                    
-                    pygame.draw.line(screen, (r, g, b), (p1_px, p1_py), (p2_px, p2_py), 3)
+                n = len(self.trail_history)
+                for i in range(1, n):
+                    a = self.trail_history[i - 1]
+                    b = self.trail_history[i]
+                    p1 = (center_x + int(a[0] * scale_x), ground_y - int(a[1] * scale_y))
+                    p2 = (center_x + int(b[0] * scale_x), ground_y - int(b[1] * scale_y))
+                    pygame.draw.line(screen, lerp((16, 24, 38), ACCENT, i / n), p1, p2, 3)
+                # iz başında yumuşak parlama
+                glow(p2[0], p2[1], 14, ACCENT, max_alpha=45)
 
-            # 9. Altimeter vertical projection guide
+            # --- İrtifa dikey projeksiyon kılavuzu ---
             if self.in_air or self.y > 0.0:
-                for proj_y in range(drone_py, 500, 10):
-                    if (proj_y // 5) % 2 == 0:
-                        pygame.draw.line(screen, (150, 150, 170), (drone_px, proj_y), (drone_px, min(500, proj_y + 6)), 1)
-                
-                alt_txt = f"ALT: {self.y:.1f}m"
-                alt_sf = log_font.render(alt_txt, True, NEON_ORANGE)
-                screen.blit(alt_sf, (drone_px + 12, drone_py + (500 - drone_py) // 2))
+                for py in range(drone_py, ground_y, 10):
+                    if (py // 5) % 2 == 0:
+                        pygame.draw.line(screen, (120, 132, 156), (drone_px, py), (drone_px, min(ground_y, py + 6)), 1)
+                asf = f_tick.render(f"{self.y:.1f}m", True, WARN)
+                screen.blit(asf, (drone_px + 10, drone_py + (ground_y - drone_py) // 2))
 
-            # 10. HUD Target Lock Reticle
+            # --- Hedef kilit nişangahı ---
             if self.in_air or self.target_y > 0.0:
                 pulse = int(4 * math.sin(time.time() * 6.0))
-                pygame.draw.circle(screen, NEON_GREEN, (target_px, target_py), 12 + pulse, 1)
-                pygame.draw.circle(screen, NEON_GREEN, (target_px, target_py), 2)
-                size = 8
-                # Top-Left
-                pygame.draw.line(screen, NEON_GREEN, (target_px - size, target_py - size), (target_px - size + 4, target_py - size), 2)
-                pygame.draw.line(screen, NEON_GREEN, (target_px - size, target_py - size), (target_px - size, target_py - size + 4), 2)
-                # Top-Right
-                pygame.draw.line(screen, NEON_GREEN, (target_px + size, target_py - size), (target_px + size - 4, target_py - size), 2)
-                pygame.draw.line(screen, NEON_GREEN, (target_px + size, target_py - size), (target_px + size, target_py - size + 4), 2)
-                # Bottom-Left
-                pygame.draw.line(screen, NEON_GREEN, (target_px - size, target_py + size), (target_px - size + 4, target_py + size), 2)
-                pygame.draw.line(screen, NEON_GREEN, (target_px - size, target_py + size), (target_px - size, target_py + size - 4), 2)
-                # Bottom-Right
-                pygame.draw.line(screen, NEON_GREEN, (target_px + size, target_py + size), (target_px + size - 4, target_py + size), 2)
-                pygame.draw.line(screen, NEON_GREEN, (target_px + size, target_py + size), (target_px + size, target_py + size - 4), 2)
+                glow(target_px, target_py, 22, OK, max_alpha=34)
+                pygame.draw.circle(screen, OK, (target_px, target_py), 12 + pulse, 1)
+                pygame.draw.circle(screen, OK, (target_px, target_py), 2)
+                s = 8
+                for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                    cx, cy = target_px + dx * s, target_py + dy * s
+                    pygame.draw.line(screen, OK, (cx, cy), (cx - dx * 4, cy), 2)
+                    pygame.draw.line(screen, OK, (cx, cy), (cx, cy - dy * 4), 2)
 
-            # 11. High-Fidelity Quadcopter Render
-            cos_t = math.cos(-self.theta)
-            sin_t = math.sin(-self.theta)
-            
-            left_arm_x = drone_px - int(35 * cos_t)
-            left_arm_y = drone_py - int(35 * sin_t)
-            right_arm_x = drone_px + int(35 * cos_t)
-            right_arm_y = drone_py + int(35 * sin_t)
-
-            # Landing gear skids
+            # --- Quadcopter render ---
+            cos_t, sin_t = math.cos(-self.theta), math.sin(-self.theta)
+            la_x = drone_px - int(35 * cos_t)
+            la_y = drone_py - int(35 * sin_t)
+            ra_x = drone_px + int(35 * cos_t)
+            ra_y = drone_py + int(35 * sin_t)
             pygame.draw.line(screen, (108, 122, 137), (drone_px - 8, drone_py + 4), (drone_px - 10, drone_py + 12), 2)
             pygame.draw.line(screen, (108, 122, 137), (drone_px + 8, drone_py + 4), (drone_px + 10, drone_py + 12), 2)
             pygame.draw.line(screen, (108, 122, 137), (drone_px - 14, drone_py + 12), (drone_px + 14, drone_py + 12), 2)
-
-            # Metallic structural arms
-            pygame.draw.line(screen, (149, 165, 166), (left_arm_x, left_arm_y), (right_arm_x, right_arm_y), 3)
-
-            # Fuselage body capsule
+            pygame.draw.line(screen, (149, 165, 166), (la_x, la_y), (ra_x, ra_y), 3)
             pygame.draw.ellipse(screen, (44, 62, 80), (drone_px - 12, drone_py - 6, 24, 12))
             pygame.draw.ellipse(screen, (52, 73, 94), (drone_px - 9, drone_py - 4, 18, 8))
-
-            # Blinking center Status LED
-            center_led_flash = (time.time() * 4) % 2 < 1
+            led_flash = (time.time() * 4) % 2 < 1
             if self.failsafe:
-                led_c = NEON_RED if center_led_flash else (100, 0, 0)
+                led_c = DANGER if led_flash else (100, 0, 0)
             elif self.in_air:
-                led_c = NEON_GREEN if center_led_flash else (0, 100, 0)
+                led_c = OK if led_flash else (0, 100, 0)
             else:
-                led_c = BLUE
+                led_c = ACCENT
+            glow(drone_px, drone_py, 16, led_c, max_alpha=55 if led_flash else 22)
             pygame.draw.circle(screen, led_c, (drone_px, drone_py), 3)
+            nav_flash = (time.time() * 2.5) % 2 < 1
+            if nav_flash and (self.in_air or self.target_y > 0.0) and not self.failsafe:
+                glow(la_x, la_y, 10, DANGER, max_alpha=60)
+                glow(ra_x, ra_y, 10, OK, max_alpha=60)
+                pygame.draw.circle(screen, DANGER, (la_x, la_y), 4)
+                pygame.draw.circle(screen, OK, (ra_x, ra_y), 4)
+            pygame.draw.rect(screen, (30, 30, 30), (la_x - 3, la_y - 6, 6, 8), border_radius=1)
+            pygame.draw.rect(screen, (30, 30, 30), (ra_x - 3, ra_y - 6, 6, 8), border_radius=1)
+            pygame.draw.circle(screen, (80, 80, 90), (la_x, la_y - 6), 18, 1)
+            pygame.draw.circle(screen, (80, 80, 90), (ra_x, ra_y - 6), 18, 1)
+            pl_len = 18
+            p1x = int(pl_len * math.cos(self.propeller_angle))
+            p1y = int(pl_len * math.sin(self.propeller_angle) * 0.3)
+            p2x = int(pl_len * math.cos(self.propeller_angle + 0.4))
+            p2y = int(pl_len * math.sin(self.propeller_angle + 0.4) * 0.3)
+            mlt = (la_x, la_y - 6)
+            pygame.draw.line(screen, (220, 220, 220), (mlt[0] - p1x, mlt[1] - p1y), (mlt[0] + p1x, mlt[1] + p1y), 2)
+            pygame.draw.line(screen, (150, 150, 150), (mlt[0] - p2x, mlt[1] - p2y), (mlt[0] + p2x, mlt[1] + p2y), 1)
+            p3x = int(pl_len * math.cos(-self.propeller_angle))
+            p3y = int(pl_len * math.sin(-self.propeller_angle) * 0.3)
+            p4x = int(pl_len * math.cos(-self.propeller_angle + 0.4))
+            p4y = int(pl_len * math.sin(-self.propeller_angle + 0.4) * 0.3)
+            mrt = (ra_x, ra_y - 6)
+            pygame.draw.line(screen, (220, 220, 220), (mrt[0] - p3x, mrt[1] - p3y), (mrt[0] + p3x, mrt[1] + p3y), 2)
+            pygame.draw.line(screen, (150, 150, 150), (mrt[0] - p4x, mrt[1] - p4y), (mrt[0] + p4x, mrt[1] + p4y), 1)
 
-            # Navigation lights blinking on arm tips
-            nav_light_flash = (time.time() * 2.5) % 2 < 1
-            if nav_light_flash and (self.in_air or self.target_y > 0.0) and not self.failsafe:
-                pygame.draw.circle(screen, RED, (left_arm_x, left_arm_y), 4)
-                pygame.draw.circle(screen, NEON_GREEN, (right_arm_x, right_arm_y), 4)
-
-            # Motor mounts at arm tips
-            pygame.draw.rect(screen, (30, 30, 30), (left_arm_x - 3, left_arm_y - 6, 6, 8), border_radius=1)
-            pygame.draw.rect(screen, (30, 30, 30), (right_arm_x - 3, right_arm_y - 6, 6, 8), border_radius=1)
-
-            # Rotor sweep outline rings (gives a sleek CAD/aerodynamics blueprint look)
-            pygame.draw.circle(screen, (80, 80, 90), (left_arm_x, left_arm_y - 6), 18, 1)
-            pygame.draw.circle(screen, (80, 80, 90), (right_arm_x, right_arm_y - 6), 18, 1)
-
-            # Propellers drawing
-            prop_len = 18
-            p1_x = int(prop_len * math.cos(self.propeller_angle))
-            p1_y = int(prop_len * math.sin(self.propeller_angle) * 0.3)
-            p2_x = int(prop_len * math.cos(self.propeller_angle + 0.4))
-            p2_y = int(prop_len * math.sin(self.propeller_angle + 0.4) * 0.3)
-            
-            motor_l_top = (left_arm_x, left_arm_y - 6)
-            pygame.draw.line(screen, (220, 220, 220), (motor_l_top[0] - p1_x, motor_l_top[1] - p1_y), (motor_l_top[0] + p1_x, motor_l_top[1] + p1_y), 2)
-            pygame.draw.line(screen, (150, 150, 150), (motor_l_top[0] - p2_x, motor_l_top[1] - p2_y), (motor_l_top[0] + p2_x, motor_l_top[1] + p2_y), 1)
-
-            p3_x = int(prop_len * math.cos(-self.propeller_angle))
-            p3_y = int(prop_len * math.sin(-self.propeller_angle) * 0.3)
-            p4_x = int(prop_len * math.cos(-self.propeller_angle + 0.4))
-            p4_y = int(prop_len * math.sin(-self.propeller_angle + 0.4) * 0.3)
-
-            motor_r_top = (right_arm_x, right_arm_y - 6)
-            pygame.draw.line(screen, (220, 220, 220), (motor_r_top[0] - p3_x, motor_r_top[1] - p3_y), (motor_r_top[0] + p3_x, motor_r_top[1] + p3_y), 2)
-            pygame.draw.line(screen, (150, 150, 150), (motor_r_top[0] - p4_x, motor_r_top[1] - p4_y), (motor_r_top[0] + p4_x, motor_r_top[1] + p4_y), 1)
-
-            # 12. Draw Live Telemetry GCS dashboard elements
-            texts = [
-                f"=== İHA CANLI FİZİK TELEMETRİSİ ===",
-                f"Modu        : {self.mode}",
-                f"Konum X     : {self.x:.2f} m",
-                f"İrtifa (Y)  : {self.y:.2f} m",
-                f"Yatay Hız   : {self.vx:.2f} m/s",
-                f"Dikey Hız   : {self.vy:.2f} m/s",
-                f"Açı (Theta) : {math.degrees(self.theta):.1f}°",
-                f"Batarya     : %{self.battery:.1f}",
-                f"Checklist   : {'TAMAM' if self.checklist_completed else 'BEKLİYOR'}",
-                f"Rüzgar Hızı : {self.wind_speed:.1f} km/s",
-                f"Failsafe    : {'KİLİTLİ' if self.failsafe else 'PASİF'}"
+            # ============================================================
+            #  A L T   T E L E M E T R I   K O N S O L U
+            # ============================================================
+            tbar = pygame.Rect(VP_X + 8, 690, VP_W - 24, 102)
+            draw_panel(tbar, fill=PANEL, border=BORDER, radius=12)
+            panel_header(tbar.x + 12, tbar.y + 10, "Canlı Telemetri")
+            fs_ok = not self.failsafe
+            tiles = [
+                ("İrtifa",     f"{self.y:.1f}",             ACCENT),
+                ("Konum X",    f"{self.x:.1f}",             ACCENT),
+                ("Yatay Hız",  f"{self.vx:.1f}",            TEAL),
+                ("Dikey Hız",  f"{self.vy:.1f}",            TEAL),
+                ("Eğim",       f"{math.degrees(self.theta):.0f}°", VIOLET),
+                ("Batarya",    f"{self.battery:.0f}%",      bat_c),
+                ("Rüzgar",     f"{self.wind_speed:.0f}",    WARN),
+                ("Failsafe",   "AKTİF" if fs_ok else "KİLİT", OK if fs_ok else DANGER),
             ]
+            tw = (tbar.width - 24 - 7 * 8) // 8
+            for i, (lbl, val, acc) in enumerate(tiles):
+                stat_tile(tbar.x + 12 + i * (tw + 8), tbar.y + 30, tw, 60, lbl, val, acc)
 
-            y_offset = 60
-            for text_line in texts:
-                img = telemetry_font.render(text_line, True, WHITE)
-                # Render semi-transparent backing panel for telemetry
-                screen.blit(img, (470, y_offset))
-                y_offset += 20
+            # ============================================================
+            #  U S T   B A S L I K   C U B U G U
+            # ============================================================
+            screen.blit(header_surface, (0, 0))
+            pygame.draw.line(screen, BORDER, (0, HEAD_H), (WIDTH, HEAD_H), 1)
+            pygame.draw.line(screen, sh(ACCENT, -110), (0, HEAD_H + 1), (WIDTH, HEAD_H + 1), 1)
+            # Logo işareti (rotor)
+            pygame.draw.circle(screen, ACCENT, (26, 27), 9, 2)
+            for a in range(4):
+                ang = math.radians(a * 90 + 45)
+                pygame.draw.circle(screen, ACCENT, (26 + int(11 * math.cos(ang)), 27 + int(11 * math.sin(ang))), 2)
+            screen.blit(f_h1.render("İHA YER KONTROL İSTASYONU", True, TEXT), (48, 17))
+            # Mod rozeti
+            mode_c = DANGER if self.failsafe else (OK if self.in_air else ACCENT)
+            mtxt = f_small.render(self.mode, True, mode_c)
+            mbadge = pygame.Rect(372, 15, mtxt.get_width() + 26, 24)
+            pygame.draw.rect(screen, sh(mode_c, -150), mbadge, border_radius=12)
+            pygame.draw.rect(screen, mode_c, mbadge, 1, border_radius=12)
+            pygame.draw.circle(screen, mode_c, (mbadge.x + 13, mbadge.centery), 4)
+            screen.blit(mtxt, (mbadge.x + 22, mbadge.centery - mtxt.get_height() // 2))
+            # Sağ küme: bağlantı + sinyal + saat
+            hb_flash = (time.time() * 3.0) % 2 < 1.0
+            clock_txt = time.strftime("%H:%M:%S")
+            cs = f_mono_b.render(clock_txt, True, TEXT_DIM)
+            screen.blit(cs, (WIDTH - cs.get_width() - 18, 19))
+            sig_x = WIDTH - cs.get_width() - 62
+            for s in range(4):
+                pygame.draw.rect(screen, OK if s < 3 else (52, 62, 78), (sig_x + s * 6, 32 - s * 4, 4, 4 + s * 4))
+            link_c = OK if hb_flash else sh(OK, -90)
+            pygame.draw.circle(screen, link_c, (sig_x - 66, 27), 5)
+            if hb_flash:
+                pygame.draw.circle(screen, OK, (sig_x - 66, 27), 8, 1)
+            screen.blit(f_small.render("BAĞLANTI", True, TEXT_DIM), (sig_x - 54, 20))
+
+            # ============================================================
+            #  S O L   K O N T R O L   P A N E L I
+            # ============================================================
+            pygame.draw.rect(screen, (13, 18, 28), (0, HEAD_H, PANEL_W, HEIGHT - HEAD_H))
+            pygame.draw.line(screen, BORDER, (PANEL_W, HEAD_H), (PANEL_W, HEIGHT), 1)
+
+            # --- Kart 1: Giriş modu ---
+            card1 = pygame.Rect(14, 66, 402, 132)
+            draw_panel(card1)
+            panel_header(28, 78, "Komut Giriş Modu")
+            status_color = OK if self.status_message == "HAZIR" else ACCENT
+            if "DINLENIYOR" in self.status_message or "Ses" in self.status_message:
+                status_color = WARN
+            elif "Hata" in self.status_message or "Reddedildi" in self.status_message:
+                status_color = DANGER
+            screen.blit(f_small.render("DURUM", True, TEXT_MUTE), (28, 110))
+            pygame.draw.circle(screen, status_color, (32, 130), 4)
+            screen.blit(f_body_b.render(self.status_message, True, status_color), (44, 122))
+            v_active = self.input_mode == "voice"
+            k_active = self.input_mode == "keyboard"
+            draw_button(btn_voice, "SESLİ GİRİŞ", ACCENT if v_active else PANEL_2, TEXT if v_active else TEXT_DIM,
+                        hover_voice, accent=ACCENT if v_active else None, active=v_active)
+            draw_button(btn_key, "KLAVYE", ACCENT if k_active else PANEL_2, TEXT if k_active else TEXT_DIM,
+                        hover_key, accent=ACCENT if k_active else None, active=k_active)
+
+            # --- Kart 2: Komut konsolu ---
+            card2 = pygame.Rect(14, 208, 402, 82)
+            draw_panel(card2)
+            panel_header(28, 216, "Komut Konsolu")
+            tb_border = ACCENT if self.is_textbox_focused else BORDER_HI
+            pygame.draw.rect(screen, PANEL_INSET, textbox_rect, border_radius=8)
+            pygame.draw.rect(screen, tb_border, textbox_rect, 2 if self.is_textbox_focused else 1, border_radius=8)
+            tb_pad = 10
+            tb_avail = textbox_rect.width - tb_pad * 2
+            if self.input_text:
+                tc = TEXT if self.input_mode == "keyboard" else TEXT_MUTE
+                tsf = f_body.render(self.input_text, True, tc)
+                # Metin uzadıkça sola kaydır: her zaman sonu (imleci) göster
+                scroll = max(0, tsf.get_width() - tb_avail)
+                prev_clip = screen.get_clip()
+                screen.set_clip(textbox_rect.inflate(-6, -4))
+                screen.blit(tsf, (textbox_rect.x + tb_pad - scroll, textbox_rect.y + 9))
+                screen.set_clip(prev_clip)
+                if self.is_textbox_focused and self.cursor_timer < 0.5:
+                    cxp = textbox_rect.x + tb_pad + min(tsf.get_width(), tb_avail) + 1
+                    pygame.draw.line(screen, ACCENT, (cxp, textbox_rect.y + 8), (cxp, textbox_rect.y + 26), 2)
+            else:
+                ph = "Komut girin…" if self.input_mode == "keyboard" else "(Klavye moduna geçin)"
+                screen.blit(f_body.render(ph, True, TEXT_MUTE), (textbox_rect.x + tb_pad, textbox_rect.y + 9))
+                if self.is_textbox_focused and self.cursor_timer < 0.5:
+                    pygame.draw.line(screen, ACCENT, (textbox_rect.x + tb_pad, textbox_rect.y + 8),
+                                     (textbox_rect.x + tb_pad, textbox_rect.y + 26), 2)
+            send_on = self.input_mode == "keyboard"
+            draw_button(btn_send, "GÖNDER", OK if send_on else PANEL_2, TEXT if send_on else TEXT_MUTE,
+                        hover_send and send_on, accent=OK if send_on else None)
+
+            # --- Kart 3: Event günlüğü ---
+            card3 = pygame.Rect(14, 296, 402, 336)
+            draw_panel(card3)
+            panel_header(28, 306, "Sistem Event Günlüğü")
+            console = pygame.Rect(24, 328, 382, 296)
+            pygame.draw.rect(screen, PANEL_INSET, console, border_radius=8)
+            pygame.draw.rect(screen, BORDER, console, 1, border_radius=8)
+            wrapped = []
+            for raw in self.gui_logs:
+                if len(raw) > 42:
+                    for i in range(0, len(raw), 42):
+                        wrapped.append(raw[i:i + 42])
+                else:
+                    wrapped.append(raw)
+            ly = 338
+            for wl in wrapped[-12:]:
+                c = TEXT_DIM
+                if wl.startswith("Pilot:"):
+                    c = ACCENT
+                elif wl.startswith("Asistan:"):
+                    c = WARN
+                elif wl.startswith("Sistem:") or wl.startswith("Reddedildi:") or wl.startswith("Hata:"):
+                    c = DANGER
+                elif wl.startswith("Başarılı:") or wl.startswith("Basarili:") or wl.startswith("Onaylandı:"):
+                    c = OK
+                screen.blit(f_mono.render(wl, True, c), (34, ly))
+                ly += 22
+
+            # --- Kart 4: Kritik eylem konsolu ---
+            card4 = pygame.Rect(14, 642, 402, 142)
+            fill4 = DANGER_DEEP if self.failsafe else PANEL
+            draw_panel(card4, fill=fill4, border=DANGER if self.failsafe else BORDER)
+            panel_header(28, 652, "Kritik Eylem Konsolu", accent=DANGER)
+            draw_button(btn_reboot, "SİSTEMİ YENİDEN BAŞLAT", PANEL_2, TEXT, hover_reboot, accent=ACCENT)
+            draw_button(btn_abort, "ACİL DURDUR — ABORT", sh(DANGER, -140), DANGER, hover_abort, accent=DANGER)
 
             pygame.display.flip()
 

@@ -114,10 +114,11 @@ class Drone:
                 self.sim.wind_speed = self.wind_speed
 
         self._update_battery_consumption()
+        # Fizik motorundan gelen değerleri LLM/gösterim için temizle (gürültü kırpma)
         return {
-            "x": self.x,
-            "y": self.y,
-            "altitude": self.altitude,
+            "x": round(float(self.x), 2),
+            "y": round(float(self.y), 2),
+            "altitude": round(float(self.altitude), 2),
             "mode": self.mode,
             "battery": self.battery,
             "in_air": self.in_air,
@@ -177,7 +178,11 @@ class Drone:
 
     def takeoff(self, target_altitude):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
-        
+
+        # Hedef irtifayı temizle: gürültülü fizik değerleri (ör. 30.03798...) yerine
+        # tek ondalıklı, düzgün bir setpoint kullan.
+        target_altitude = round(float(target_altitude), 1)
+
         if self.in_air:
             self.altitude = target_altitude
             if not self.mavlink_enabled and self.sim:
@@ -186,7 +191,7 @@ class Drone:
             if self.battery <= 0 and not self.failsafe_active:
                 self.emergency_stop()
                 return "[FAILSAFE AKTİF] İrtifa güncellemesi esnasında batarya tükendi, sistem kilitlendi."
-            return f"Başarılı: İrtifa {target_altitude} metreye güncellendi."
+            return f"Başarılı: İrtifa {target_altitude:g} metreye güncellendi."
             
         if self.mavlink_enabled and self.mavlink_conn:
             try:
@@ -210,8 +215,8 @@ class Drone:
         self.altitude = target_altitude
         self.mode = "GUIDED" 
         self.battery = max(0, self.battery - 5) 
-        self.takeoff_time = time.time() 
-        return f"Başarılı: {target_altitude} metreye ilk kalkış yapıldı."
+        self.takeoff_time = time.time()
+        return f"Başarılı: {target_altitude:g} metreye ilk kalkış yapıldı."
 
     def land(self):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
