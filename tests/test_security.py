@@ -23,7 +23,9 @@ def drone(mock_config):
     """ Testler için temiz bir drone nesnesi oluşturur """
     cfg = mock_config.copy()
     cfg["battery_drain_per_second"] = 0.5
-    return Drone(cfg)
+    d = Drone(cfg)
+    d.sim = None  # Simülatörü devre dışı bırak ki test değerlerini ezmesin
+    return d
 
 
 # === 1. TEST: GEOGENCE (SANAL SINIR) SINIR TESTLERİ ===

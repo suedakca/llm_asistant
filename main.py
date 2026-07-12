@@ -202,23 +202,12 @@ def main():
     except ValueError as e:
         print(f"\n❌ [SİSTEM BAŞLATMA HATASI]: {e}"); return
 
-    # MAVLink kapalıysa görsel Pygame fizik simülatörünü kullan.
-    # macOS'ta pygame/SDL penceresi ANA thread'de açılmalıdır; bu yüzden
-    # komut döngüsünü arka thread'e alıp pencereyi ana thread'de çalıştırıyoruz.
-    if not drone.mavlink_enabled:
-        import threading
-        from simulator import global_simulator
+    from simulator import global_simulator
+    # GUI Kontrol Arayüzünü Yapılandır
+    global_simulator.init_gui_control(drone, security, assistant, logger, config, session_id)
 
-        loop_thread = threading.Thread(
-            target=run_command_loop,
-            args=(drone, security, assistant, logger, config, session_id, global_simulator),
-            daemon=True,
-        )
-        loop_thread.start()
-        print("🎮 [SİSTEM] Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
-        global_simulator.run_pygame()  # Ana thread'de bloke eder (pencere kapanınca döner)
-    else:
-        run_command_loop(drone, security, assistant, logger, config, session_id, simulator=None)
+    print("🎮 [SİSTEM] Arayüz Destekli Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
+    global_simulator.run_pygame()  # Ana thread'de bloke eder (pencere kapanınca döner)
 
 
 if __name__ == "__main__":

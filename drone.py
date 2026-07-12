@@ -68,7 +68,10 @@ class Drone:
                 self.battery = max(0, self.battery - tam_tuketim)
 
                 if self.battery <= 0 and not self.failsafe_active:
-                    print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] BATARYA %0! MOTOR KESİLDİ!")
+                    msg = "🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] BATARYA %0! MOTOR KESİLDİ!"
+                    print("\n" + msg)
+                    if self.sim:
+                        self.sim.add_gui_log(msg)
                     self.emergency_stop()
 
     def _recv_mavlink_telemetry(self):
@@ -236,7 +239,10 @@ class Drone:
         self.checklist_completed = False
 
         if self.battery <= 0:
-            print("\n[KRİTİK GÜVENLİK SİSTEMİ] İNİŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
+            msg = "[KRİTİK GÜVENLİK SİSTEMİ] İNİŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!"
+            print("\n" + msg)
+            if self.sim:
+                self.sim.add_gui_log(msg)
             self.emergency_stop()
             return "Başarılı: İniş gerçekleştirildi ancak batarya tamamen tükendi (Motor Kesildi). Kontrol listesi sıfırlandı."
 
@@ -271,7 +277,10 @@ class Drone:
         self.checklist_completed = False
 
         if self.battery <= 0:
-            print("\n🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] EVE DÖNÜŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!")
+            msg = "🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] EVE DÖNÜŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!"
+            print("\n" + msg)
+            if self.sim:
+                self.sim.add_gui_log(msg)
             self.emergency_stop()
             return f"Başarılı: Başlangıç konumuna dönüldü ({self.home_x}, {self.home_y}) ancak batarya tamamen tükendi (Sistem Kilitlendi). Kontrol listesi sıfırlandı."
 
