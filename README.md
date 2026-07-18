@@ -27,7 +27,10 @@ Pilot Komutu
 ### 1. Gerekli Kütüphaneleri Yükle
 
 ```bash
-pip3 install google-genai python-dotenv pyyaml SpeechRecognition pyaudio matplotlib
+pip3 install -r requirements.txt
+
+# Sesli komut için ek olarak (sistem kütüphanesi gerektirir):
+#   macOS: brew install portaudio && pip3 install pyaudio
 ```
 
 ### 2. `.env` Dosyası Oluştur
@@ -183,7 +186,26 @@ ArduPilot veya PX4 SITL simülatörü çalışırken bağlanır. Bağlantı baş
 ## Testler
 
 ```bash
-python3 -m pytest tests/ -v
+python3 -m pytest          # tüm test paketi (208 test)
+python3 -m pytest tests/test_security_edge.py   # tek modül
 ```
 
-15 güvenlik testi kapsamı: geofence, batarya limitleri, irtifa kuralları, failsafe kilidi, checklist zorunluluğu, rüzgar engellemesi.
+Yapılandırma `pytest.ini` içindedir; testler ağ bağlantısı veya API anahtarı gerektirmez (Gemini istemcisi sahtelenir).
+
+| Modül | Test | Kapsam |
+|---|---|---|
+| `test_security.py` | 15 | Temel güvenlik kuralları: geofence, batarya, irtifa, failsafe, checklist, rüzgar |
+| `test_security_edge.py` | 68 | Sınır değerleri, hatalı LLM çıktıları, tanınmayan eylemler, tip doğrulama |
+| `test_drone.py` | 40 | Durum makinesi, batarya tüketim motoru, tüm yön eşanlamlıları, telemetri sözleşmesi |
+| `test_simulator.py` | 25 | PID kaskad kontrolcü yakınsaması, eğim limiti, failsafe serbest düşüş, tampon sınırları |
+| `test_logger.py` | 17 | JSONLines kayıt, oturum izolasyonu, bozuk satır dayanıklılığı, özet raporu |
+| `test_assistant.py` | 17 | JSON ayrıştırma, markdown temizleme, API hatası dayanıklılığı, gözlemci veto mantığı |
+| `test_integration.py` | 20 | Uçtan uca görev senaryoları, zincir kesilmesi, acil durum akışları |
+| `test_config.py` | 11 | `config.yaml` ile kod beklentilerinin tutarlılığı |
+
+### Test edilen güvenlik ilkeleri
+
+- **LLM çıktısı güvenilmez girdidir.** Tanınmayan eylem adları ve sayısal olmayan parametreler drone'a ulaşmadan reddedilir.
+- **Fail-closed.** Gözlemci LLM'e ulaşılamazsa karar VETO'ya düşer.
+- **Failsafe mutlaktır.** Kilit aktifken istisnasız hiçbir eylem geçmez.
+- **Geofence her iki eksende zorunludur** — fizik simülatörü bağlıyken de.
