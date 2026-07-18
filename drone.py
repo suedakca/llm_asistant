@@ -100,9 +100,11 @@ class Drone:
             self._recv_mavlink_telemetry()
         else:
             if self.sim:
-                # Sync simulated physics state to local attributes
-                self.x = self.sim.x
-                self.y = 0.0  # Yatay kuzey/güney 2B simülatörde kullanılmıyor
+                # Fizik motorundan YALNIZCA dikey eksen ve uçuş durumu alınır.
+                # x (doğu/batı) ve y (kuzey/güney) mantıksal görev koordinatlarıdır;
+                # move()/set_home()/return_to_home() tarafından yönetilir ve geofence
+                # denetiminin tek doğruluk kaynağıdır. Bunları 2B simülatörün tek
+                # yatay ekseninden ezmek kuzey/güney geofence'ini devre dışı bırakır.
                 self.altitude = self.sim.y
                 self.in_air = self.sim.in_air
 

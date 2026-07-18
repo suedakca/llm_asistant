@@ -145,9 +145,10 @@ class DroneSimulator:
                 self.status_message = "Denetleniyor..."
                 observer_audit = self.assistant.observe_and_verify(current_telemetry, parsed_intent_list)
                 if observer_audit.get("decision") == "VETOED":
-                    veto_reason = observer_audit.get('reason')
+                    veto_reason = observer_audit.get("reason", "gerekçe belirtilmedi")
                     self.add_gui_log(f"Gozlemci Vetosu: {veto_reason}")
-                    self.logger.log_action(self.session_id, user_command, "MULTI_ACTION", None, False, "LLM 2 Vetosu")
+                    self.logger.log_action(self.session_id, user_command, "MULTI_ACTION", None, False,
+                                           f"LLM 2 Vetosu: {veto_reason}")
                     self.status_message = "HAZIR"
                     return
 
