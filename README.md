@@ -183,10 +183,48 @@ drone_settings:
 
 ArduPilot veya PX4 SITL simülatörü çalışırken bağlanır. Bağlantı başarısız olursa otomatik olarak yerel simülasyon moduna geçer.
 
+## Arıza Enjeksiyonu
+
+Güvenlik katmanının yalnızca temiz telemetriyle değil, bozulmuş sensör ve donanım koşullarında da doğru davrandığını göstermek için kontrollü arıza senaryoları enjekte edilebilir. Arayüzde F-tuşlarıyla anlık aç/kapa yapılır:
+
+| Tuş | Arıza | Güvenlik katmanının tepkisi |
+|---|---|---|
+| `F5` | GPS sinyal kaybı | Konum donar; `move`, `return_to_home`, `set_home` reddedilir |
+| `F6` | İrtifa sensörü sapması | Raporlanan irtifa kayar; sapma eşiği aşarsa `takeoff` reddedilir |
+| `F7` | Motor güç kaybı | İtki düşer, araç irtifasını koruyamaz; `takeoff`/`move` reddedilir |
+| `F9` | Batarya arızası | Tüketim hızlanır |
+| `F8` | — | Tüm arızaları temizler |
+
+Programatik kullanım:
+
+```python
+import faults
+drone.faults.inject(faults.MOTOR_DEGRADATION, health=0.3)
+drone.faults.clear()
+```
+
+**Değişmez kural:** hangi arıza aktif olursa olsun `land` ve `get_telemetry` asla engellenmez — arıza hâlinde pilotun elinden aracı indirme imkânı alınamaz. Bu kural her arıza tipi için ayrı ayrı test edilir.
+
+Arızalar deterministiktir (sabit sapma değerleri, rastgelelik yok), böylece aynı senaryo her çalıştırmada aynı sonucu verir. Eşikler `config.yaml` içindeki `fault_injection` bölümünden ayarlanır.
+
+## Telemetri Kaydı
+
+`uclus_loglari.json` yalnızca komutları kaydeder. `radar.py` eskiden uçuş rotasını bu komutlardan *yeniden inşa etmek* zorundaydı — yani komutların olması gereken sonucunu çiziyordu, aracın gerçekte nerede olduğunu değil. Rüzgar sapması, PID aşımı veya yarıda kesilen bir hareket grafiğe hiç yansımıyordu.
+
+`telemetry.py` fizik motorundan periyodik örnek alıp gerçek uçuş izini `telemetri_kaydi.json` dosyasına yazar. Radar bu dosyayı varsa tercih eder, yoksa eski komut logu tahminine geri düşer (panelde hangi kaynağın kullanıldığı yazar).
+
+```yaml
+telemetry_recording:
+  enabled: true
+  sample_hz: 5.0    # 60 FPS render döngüsünden bağımsız örnekleme
+```
+
+Aktif arızalar da her örnekle kaydedilir; böylece uçuş sonrası "bu anomali arızadan mı kaynaklandı?" sorusu yanıtlanabilir. Kayıt dosyası boyut sınırını aşarsa otomatik arşivlenir.
+
 ## Testler
 
 ```bash
-python3 -m pytest          # tüm test paketi (208 test)
+python3 -m pytest          # tüm test paketi (271 test)
 python3 -m pytest tests/test_security_edge.py   # tek modül
 ```
 
@@ -201,7 +239,9 @@ Yapılandırma `pytest.ini` içindedir; testler ağ bağlantısı veya API anaht
 | `test_logger.py` | 17 | JSONLines kayıt, oturum izolasyonu, bozuk satır dayanıklılığı, özet raporu |
 | `test_assistant.py` | 17 | JSON ayrıştırma, markdown temizleme, API hatası dayanıklılığı, gözlemci veto mantığı |
 | `test_integration.py` | 20 | Uçtan uca görev senaryoları, zincir kesilmesi, acil durum akışları |
-| `test_config.py` | 11 | `config.yaml` ile kod beklentilerinin tutarlılığı |
+| `test_faults.py` | 39 | Arıza enjeksiyonu, bozulmuş telemetri, engelleme kuralları, fizik etkisi |
+| `test_telemetry.py` | 18 | Örnekleme hızı doğruluğu, tampon davranışı, arşivleme, gerçek uçuş izi |
+| `test_config.py` | 14 | `config.yaml` ile kod beklentilerinin tutarlılığı |
 
 ### Test edilen güvenlik ilkeleri
 

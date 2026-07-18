@@ -17,3 +17,16 @@ llm_settings:
 
 safety_settings:
   emergency_keywords: ["ABORT", "MOTORU KES", "ACİL DURDURMA", "STOP"]
+
+# Telemetri zaman serisi kaydı — radar.py gerçek uçuş izini buradan okur.
+# Kapatılırsa radar komut loglarından rota tahmini yapmaya geri döner.
+telemetry_recording:
+  enabled: true
+  filename: "telemetri_kaydi.json"
+  sample_hz: 5.0        # saniyede kaç örnek (60 FPS render döngüsünden bağımsız)
+
+# Arıza enjeksiyonu — arayüzde F5/F6/F7/F9 ile aç-kapa, F8 tümünü temizler.
+# Eşikler: bu değerlerin ötesinde güvenlik katmanı ilgili komutları reddeder.
+fault_injection:
+  min_safe_motor_health: 0.6   # motor sağlığı bunun altındaysa kalkış/manevra yasak
+  max_safe_altitude_drift: 3.0 # irtifa sensörü sapması bunu aşarsa kalkış yasak

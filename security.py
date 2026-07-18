@@ -37,7 +37,15 @@ class SecurityLayer:
             telemetri = drone.get_telemetry()
         if telemetri["failsafe"]:
             return False, "Sistem Failsafe modunda kilitli!"
-        
+
+        # ARIZA DENETİMİ: bozulmuş sensör/donanım durumunda hangi eylemlerin
+        # güvenli olmadığına arıza modülü karar verir (iniş her zaman serbest).
+        faults = getattr(drone, "faults", None)
+        if faults is not None:
+            ariza_engeli = faults.blocking_reason(action, telemetri)
+            if ariza_engeli:
+                return False, f"GÜVENLİK REDDİ: {ariza_engeli}"
+
         hata_var_mi, mesaj = self._check_safety_rules(telemetri, action, parameter)
         if hata_var_mi:
             return False, f"GÜVENLİK REDDİ: {mesaj}"

@@ -5,12 +5,66 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.animation import FuncAnimation
 
+from telemetry import load_session
+
 LOG_FILE = "uclus_loglari.json"
+TELEMETRY_FILE = "telemetri_kaydi.json"
 
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 5))
 fig.canvas.manager.set_window_title("İHA Otonom Görev Takip Radarı")
 
-def animate(_):
+
+def _telemetri_kaydindan_oku():
+    """ Gerçek uçuş izini kaydedilmiş telemetriden okur (tercih edilen kaynak).
+
+    Komut loglarından yeniden inşa etmenin aksine burada rüzgar sapması,
+    PID aşımı ve yarıda kesilen hareketler gerçek hâliyle görünür.
+    """
+    ornekler = load_session(TELEMETRY_FILE)
+    if not ornekler:
+        return None
+
+    x_coords = [o.get("x", 0.0) for o in ornekler]
+    y_coords = [o.get("y", 0.0) for o in ornekler]
+    altitude_history = [(i, o.get("altitude", 0.0)) for i, o in enumerate(ornekler)]
+
+    son = ornekler[-1]
+    son_irtifa = son.get("altitude", 0.0)
+    if son.get("failsafe"):
+        durum = "KİLİTLİ (FAILSAFE)"
+    elif son.get("in_air") and son_irtifa <= 0.5:
+        # Uçuş komutu altında ama yerde: motor güç kaybında görülen durum.
+        # "HAVADA (0.0m)" yazmak yanıltıcı olurdu.
+        durum = "YERDE — TIRMANAMIYOR (güç yetersiz)"
+    elif son.get("in_air"):
+        durum = f"HAVADA ({son_irtifa}m)"
+    else:
+        durum = f"YERDE ({son.get('mode', 'DISARMED')})"
+
+    return {
+        "kaynak": "telemetri",
+        "home_x": 0.0,
+        "home_y": 0.0,
+        "x_coords": x_coords,
+        "y_coords": y_coords,
+        "altitude_history": altitude_history,
+        "last_status": durum,
+        "current_x": son.get("x", 0.0),
+        "current_y": son.get("y", 0.0),
+        "current_alt": son.get("altitude", 0.0),
+        "session_id": son.get("session_id"),
+        "battery": son.get("battery"),
+        "active_faults": son.get("active_faults", []),
+        "gps_healthy": son.get("gps_healthy", True),
+    }
+
+
+def _komut_loglarindan_yeniden_olustur():
+    """ Telemetri kaydı yoksa rotayı komut loglarından TAHMİN eder.
+
+    Bu yalnızca geriye dönük uyumluluk içindir: komutların olması gereken
+    sonucunu çizer, aracın gerçekte nerede olduğunu değil.
+    """
     home_x = 0.0
     home_y = 0.0
     x_coords = [0.0]
@@ -18,7 +72,6 @@ def animate(_):
     altitude_history = []   # (zaman_indeksi, irtifa) çiftleri
     last_status = "DISARMED"
     current_x, current_y, current_alt = 0.0, 0.0, 0.0
-    active_session_id = None
     all_lines = []
 
     if os.path.exists(LOG_FILE):
@@ -31,10 +84,7 @@ def animate(_):
             print(f"Log okuma hatası: {e}")
 
     if not all_lines:
-        for ax in (ax1, ax2, ax3):
-            ax.clear()
-        ax2.text(0.5, 0.5, "Henüz log yok", ha="center", va="center", transform=ax2.transAxes)
-        return
+        return None
 
     active_session_id = all_lines[-1].get("session_id")
     step = 0  # irtifa geçmişi için zaman ekseni
@@ -102,6 +152,44 @@ def animate(_):
         if "FAILSAFE" in res or "kilitlendi" in res.lower():
             last_status = "KİLİTLİ (FAILSAFE)"
 
+    return {
+        "kaynak": "komut_logu",
+        "home_x": home_x,
+        "home_y": home_y,
+        "x_coords": x_coords,
+        "y_coords": y_coords,
+        "altitude_history": altitude_history,
+        "last_status": last_status,
+        "current_x": current_x,
+        "current_y": current_y,
+        "current_alt": current_alt,
+        "session_id": active_session_id,
+        "battery": None,
+        "active_faults": [],
+        "gps_healthy": True,
+    }
+
+
+def animate(_):
+    # Gerçek telemetri kaydı varsa onu kullan; yoksa komut loglarından tahmin et.
+    veri = _telemetri_kaydindan_oku() or _komut_loglarindan_yeniden_olustur()
+
+    if veri is None:
+        for ax in (ax1, ax2, ax3):
+            ax.clear()
+        ax2.text(0.5, 0.5, "Henüz log yok", ha="center", va="center", transform=ax2.transAxes)
+        return
+
+    home_x = veri["home_x"]
+    home_y = veri["home_y"]
+    x_coords = veri["x_coords"]
+    y_coords = veri["y_coords"]
+    altitude_history = veri["altitude_history"]
+    last_status = veri["last_status"]
+    current_alt = veri["current_alt"]
+    active_session_id = veri["session_id"]
+    telemetri_kaynakli = veri["kaynak"] == "telemetri"
+
     # --- Sol panel: 2B Yatay Harita ---
     ax1.clear()
     boundary = 50
@@ -109,7 +197,12 @@ def animate(_):
                                    linewidth=2, edgecolor="red", facecolor="none",
                                    linestyle="--", label=f"Geofence (±{boundary}m)")
     ax1.add_patch(geofence)
-    ax1.plot(x_coords, y_coords, color="green", linestyle="--", marker="o", markersize=4, label="Rota")
+    if telemetri_kaynakli:
+        # Yoğun gerçek iz — her örnek nokta olmadığı için işaretleyici kullanılmaz
+        ax1.plot(x_coords, y_coords, color="lime", linewidth=1.6, label="Gerçek uçuş izi")
+    else:
+        ax1.plot(x_coords, y_coords, color="green", linestyle="--", marker="o", markersize=4,
+                 label="Rota (komuttan tahmin)")
     ax1.scatter([home_x], [home_y], color="red", s=100, marker="H", zorder=5, label="Home")
     if x_coords:
         ax1.scatter([x_coords[-1]], [y_coords[-1]], color="blue", s=120, marker="^", zorder=6, label="İHA")
@@ -130,7 +223,11 @@ def animate(_):
         # Başlangıç noktasını (0m) ekle
         steps = [0] + [s + 1 for s in steps]
         alts  = [0.0] + alts
-        ax2.plot(steps, alts, color="royalblue", marker="o", markersize=5, linewidth=2, label="İrtifa")
+        if telemetri_kaynakli:
+            ax2.plot(steps, alts, color="royalblue", linewidth=1.8, label="İrtifa (gerçek)")
+        else:
+            ax2.plot(steps, alts, color="royalblue", marker="o", markersize=5, linewidth=2,
+                     label="İrtifa (komuttan tahmin)")
         ax2.fill_between(steps, alts, alpha=0.15, color="royalblue")
         # Anlık irtifayı göster
         ax2.axhline(y=current_alt, color="orange", linestyle=":", linewidth=1.5, label=f"Anlık: {current_alt}m")
@@ -140,7 +237,7 @@ def animate(_):
         ax2.text(0.5, 0.5, "Henüz uçuş yok", ha="center", va="center", transform=ax2.transAxes, color="gray")
         ax2.set_ylim(0, 55)
     ax2.set_title("İrtifa Geçmişi (m)")
-    ax2.set_xlabel("Komut Adımı")
+    ax2.set_xlabel("Telemetri Örneği (zaman)" if telemetri_kaynakli else "Komut Adımı")
     ax2.set_ylabel("İrtifa (m)")
     ax2.grid(True, linestyle=":", alpha=0.5)
     ax2.legend(loc="upper left", fontsize=8)
@@ -161,7 +258,21 @@ def animate(_):
              color="red" if geofence_alarm else "black", transform=ax3.transAxes)
     if geofence_alarm:
         ax3.text(0.05, 0.35, "! SINIRA YAKIN !", fontsize=10, color="red", weight="bold", transform=ax3.transAxes)
-    ax3.text(0.05, 0.18, f"Oturum: {sid_display}", fontsize=9, color="gray", transform=ax3.transAxes)
+
+    # Aktif arızalar — anomalinin kaynağını uçuş sonrası ayırt edebilmek için
+    aktif_arizalar = veri.get("active_faults") or []
+    if aktif_arizalar:
+        from faults import FAULT_LABELS
+        etiketler = ", ".join(FAULT_LABELS.get(a, a) for a in aktif_arizalar)
+        ax3.text(0.05, 0.28, f"! ARIZA: {etiketler}", fontsize=9, color="darkorange",
+                 weight="bold", transform=ax3.transAxes, wrap=True)
+    if not veri.get("gps_healthy", True):
+        ax3.text(0.05, 0.22, "! GPS SINYALI YOK — konum donmus",
+                 fontsize=9, color="red", weight="bold", transform=ax3.transAxes)
+
+    kaynak_etiketi = "gercek telemetri" if telemetri_kaynakli else "komut logundan tahmin"
+    ax3.text(0.05, 0.10, f"Veri kaynagi: {kaynak_etiketi}", fontsize=8, color="gray", transform=ax3.transAxes)
+    ax3.text(0.05, 0.04, f"Oturum: {sid_display}", fontsize=9, color="gray", transform=ax3.transAxes)
 
 ani = FuncAnimation(fig, animate, interval=1000, cache_frame_data=False)
 plt.tight_layout()

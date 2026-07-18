@@ -92,6 +92,38 @@ def test_simulated_wind_is_below_safety_limit(config):
     assert float(d["simulated_wind_speed"]) < float(d["max_wind_speed"])
 
 
+def test_telemetry_recording_settings_are_sane(config):
+    """ Telemetri kayıt ayarlarının makul olduğunu doğrular """
+    kayit = config.get("telemetry_recording", {})
+    assert isinstance(kayit.get("enabled", True), bool)
+    hz = float(kayit.get("sample_hz", 5.0))
+    assert 0 <= hz <= 60, "Örnekleme hızı render döngüsünü (60 FPS) aşmamalı"
+    assert kayit.get("filename", "t.json") != config.get("log_file", "uclus_loglari.json")
+
+
+def test_fault_thresholds_are_wired_to_injector(config):
+    """ Config'teki arıza eşiklerinin FaultInjector'a gerçekten ulaştığını doğrular.
+
+    Bu ayarların sahte (kullanılmayan) olmadığının kanıtı.
+    """
+    from faults import FaultInjector
+
+    ariza_cfg = config.get("fault_injection", {})
+    inj = FaultInjector(ariza_cfg)
+
+    if "min_safe_motor_health" in ariza_cfg:
+        assert inj.min_safe_motor_health == float(ariza_cfg["min_safe_motor_health"])
+    if "max_safe_altitude_drift" in ariza_cfg:
+        assert inj.max_safe_drift_m == float(ariza_cfg["max_safe_altitude_drift"])
+
+
+def test_fault_thresholds_are_in_valid_range(config):
+    """ Arıza eşiklerinin anlamlı aralıkta olduğunu doğrular """
+    ariza = config.get("fault_injection", {})
+    assert 0.0 < float(ariza.get("min_safe_motor_health", 0.6)) <= 1.0
+    assert float(ariza.get("max_safe_altitude_drift", 3.0)) > 0
+
+
 def test_default_config_allows_takeoff(config):
     """ Varsayılan config ile temiz bir drone'un kalkış yapabildiğini doğrular.
 
