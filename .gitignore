@@ -1,4 +1,8 @@
 
+# Telemetri zaman serisi kaydı (uçuş çıktısı — depoya girmemeli)
+telemetri_kaydi.json
+telemetri_kaydi.json.1
+
 __pycache__/
 *.py[codz]
 *$py.class

@@ -1,32 +1,6 @@
 # tests/test_security.py
-import pytest
-from drone import Drone
-from security import SecurityLayer
-
-@pytest.fixture
-def mock_config():
-    """ Testler için standart sınır parametrelerini dönen fikstür """
-    return {
-        "base_max_altitude": 50.0,
-        "low_battery_max_altitude": 20.0,
-        "critical_battery": 20,
-        "geofence_boundary": 50.0
-    }
-
-@pytest.fixture
-def security_layer(mock_config):
-    """ Her testten önce temiz bir güvenlik katmanı oluşturur """
-    return SecurityLayer(mock_config)
-
-@pytest.fixture
-def drone(mock_config):
-    """ Testler için temiz bir drone nesnesi oluşturur """
-    cfg = mock_config.copy()
-    cfg["battery_drain_per_second"] = 0.5
-    d = Drone(cfg)
-    d.sim = None  # Simülatörü devre dışı bırak ki test değerlerini ezmesin
-    return d
-
+""" Güvenlik katmanının temel kural testleri.
+    Ortak fikstürler (mock_config, security_layer, drone) conftest.py'dedir. """
 
 # === 1. TEST: GEOGENCE (SANAL SINIR) SINIR TESTLERİ ===
 def test_geofence_within_bounds(drone, security_layer):

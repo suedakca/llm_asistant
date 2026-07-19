@@ -4,6 +4,16 @@ import math
 import time
 import threading
 
+import faults as fault_types
+
+# Arayüzdeki arıza enjeksiyonu kısayolları (F8: tümünü temizle)
+FAULT_KEYS = {
+    pygame.K_F5: fault_types.GPS_LOSS,
+    pygame.K_F6: fault_types.SENSOR_DRIFT,
+    pygame.K_F7: fault_types.MOTOR_DEGRADATION,
+    pygame.K_F9: fault_types.BATTERY_FAULT,
+}
+
 class DroneSimulator:
     def __init__(self):
         # Durum Değişkenleri (Fiziksel)
@@ -54,6 +64,8 @@ class DroneSimulator:
         self.mode = "DISARMED"
         self.wind_speed = 15.0
         self.running = True
+        self.motor_health = 1.0   # 1.0 = sağlam, arıza enjeksiyonuyla düşer
+        self.recorder = None      # TelemetryRecorder (init_gui_control ile bağlanır)
 
         # Rüzgar Simülasyonu
         self.wind_force_x = 0.0
@@ -92,7 +104,18 @@ class DroneSimulator:
         else:
             self.emergency_words = ["ABORT", "MOTORU KES", "ACİL DURDURMA", "STOP"]
             self.high_risk_list = ["takeoff", "move", "set_home"]
-            
+
+        # Telemetri zaman serisi kaydını başlat (config'ten kapatılabilir)
+        kayit_ayarlari = (config or {}).get("telemetry_recording", {})
+        if kayit_ayarlari.get("enabled", True):
+            from telemetry import TelemetryRecorder
+            self.recorder = TelemetryRecorder(
+                session_id=session_id,
+                filename=kayit_ayarlari.get("filename", "telemetri_kaydi.json"),
+                sample_hz=float(kayit_ayarlari.get("sample_hz", 5.0)),
+            )
+            self.add_gui_log(f"Telemetri kaydi aktif ({kayit_ayarlari.get('sample_hz', 5.0)} Hz).")
+
         self.add_gui_log("Sistem Kontrol Paneli Aktif.")
 
     def add_gui_log(self, text):
@@ -100,6 +123,25 @@ class DroneSimulator:
         self.gui_logs.append(text)
         if len(self.gui_logs) > 30:
             self.gui_logs.pop(0)
+
+    def toggle_fault(self, fault_type):
+        """ Arıza enjeksiyonunu aç/kapat (arayüzdeki F-tuşu kısayolları için). """
+        from faults import FAULT_LABELS
+
+        if self.drone is None:
+            return
+        faults = self.drone.faults
+        if faults.is_active(fault_type):
+            faults.clear(fault_type)
+            self.add_gui_log(f"ARIZA GIDERILDI: {FAULT_LABELS[fault_type]}")
+        else:
+            faults.inject(fault_type)
+            self.add_gui_log(f"ARIZA ENJEKTE EDILDI: {FAULT_LABELS[fault_type]}")
+
+        if self.logger is not None:
+            durum = "AKTIF" if faults.is_active(fault_type) else "GIDERILDI"
+            self.logger.log_action(self.session_id, f"FAULT_{fault_type}", "FAULT_INJECTION",
+                                   None, True, f"{FAULT_LABELS[fault_type]} -> {durum}")
 
     def execute_command_async(self, command_text):
         if not command_text.strip():
@@ -145,9 +187,10 @@ class DroneSimulator:
                 self.status_message = "Denetleniyor..."
                 observer_audit = self.assistant.observe_and_verify(current_telemetry, parsed_intent_list)
                 if observer_audit.get("decision") == "VETOED":
-                    veto_reason = observer_audit.get('reason')
+                    veto_reason = observer_audit.get("reason", "gerekçe belirtilmedi")
                     self.add_gui_log(f"Gozlemci Vetosu: {veto_reason}")
-                    self.logger.log_action(self.session_id, user_command, "MULTI_ACTION", None, False, "LLM 2 Vetosu")
+                    self.logger.log_action(self.session_id, user_command, "MULTI_ACTION", None, False,
+                                           f"LLM 2 Vetosu: {veto_reason}")
                     self.status_message = "HAZIR"
                     return
 
@@ -302,6 +345,11 @@ class DroneSimulator:
         # Yerçekimini dengeleyecek temel itki (Feedforward) + PID düzeltmesi
         total_thrust = (self.m * self.g) + (self.kp_alt * alt_error + self.ki_alt * self.alt_integral + self.kd_alt * alt_derivative)
         total_thrust = max(0.0, min(30.0, total_thrust)) # Motor itiş limiti (Maks 30 Newton)
+
+        # Motor arızası üretilebilen itkiyi kısar. Sağlık yeterince düşerse
+        # itki ağırlığı karşılayamaz ve araç irtifasını koruyamaz — istenen
+        # davranış budur: pilot güç kaybını uçuşta hisseder.
+        total_thrust *= self.motor_health
 
         # Havada değilse ve hedef yükseklik sıfırsa motorları tamamen kapat
         if not self.in_air and self.target_y == 0.0:
@@ -603,7 +651,15 @@ class DroneSimulator:
                         else:
                             self.is_textbox_focused = False
                 elif event.type == pygame.KEYDOWN:
-                    if self.input_mode == "keyboard" and self.is_textbox_focused:
+                    # Arıza enjeksiyonu kısayolları — F-tuşları metin kutusuna
+                    # yazılamadığı için odak durumundan bağımsız çalışır.
+                    if event.key in FAULT_KEYS:
+                        self.toggle_fault(FAULT_KEYS[event.key])
+                    elif event.key == pygame.K_F8:
+                        if self.drone is not None:
+                            self.drone.faults.clear()
+                            self.add_gui_log("TUM ARIZALAR TEMIZLENDI.")
+                    elif self.input_mode == "keyboard" and self.is_textbox_focused:
                         if event.key == pygame.K_RETURN:
                             if self.input_text.strip():
                                 self.execute_command_async(self.input_text)
@@ -615,6 +671,12 @@ class DroneSimulator:
                                 self.input_text += event.unicode
 
             self.update_physics(dt)
+
+            # Telemetri zaman serisini örnekle (kendi içinde hız sınırlı —
+            # her karede değil, sample_hz frekansında disk tamponuna yazar).
+            if self.recorder is not None and self.drone is not None:
+                self.recorder.tick(dt, self.drone.get_telemetry())
+
             screen.fill(BG_DEEP)
 
             # ============================================================
@@ -947,6 +1009,10 @@ class DroneSimulator:
             draw_button(btn_abort, "ACİL DURDUR — ABORT", sh(DANGER, -140), DANGER, hover_abort, accent=DANGER)
 
             pygame.display.flip()
+
+        # Pencere kapanırken tamponda bekleyen telemetri örneklerini kaybetme
+        if self.recorder is not None:
+            self.recorder.close()
 
         pygame.quit()
 

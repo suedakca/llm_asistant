@@ -1,6 +1,8 @@
 # drone.py
 import time
 
+from faults import FaultInjector
+
 try:
     from simulator import global_simulator
     SIMULATOR_AVAILABLE = True
@@ -14,7 +16,7 @@ except ImportError:
     MAVLINK_AVAILABLE = False
 
 class Drone:
-    def __init__(self, drone_config=None):
+    def __init__(self, drone_config=None, fault_config=None):
         self.x = 0.0          
         self.y = 0.0          
         self.altitude = 0.0   
@@ -27,6 +29,7 @@ class Drone:
         self.failsafe_active = False
         self.checklist_completed = False
         self._battery_debt = 0.0  # kesirli tüketim birikimi
+        self.faults = FaultInjector(fault_config)  # kontrollü arıza enjeksiyonu
         self.sim = global_simulator if SIMULATOR_AVAILABLE else None
 
         if drone_config and "battery_drain_per_second" in drone_config:
@@ -61,7 +64,8 @@ class Drone:
             gecen_sure = time.time() - self.takeoff_time
             self.takeoff_time = time.time()
 
-            self._battery_debt += gecen_sure * self.drain_rate
+            # Batarya arızası tüketimi hızlandırır (çarpan yokken 1.0)
+            self._battery_debt += gecen_sure * self.drain_rate * self.faults.battery_drain_multiplier
             tam_tuketim = int(self._battery_debt)
             if tam_tuketim > 0:
                 self._battery_debt -= tam_tuketim
@@ -100,9 +104,11 @@ class Drone:
             self._recv_mavlink_telemetry()
         else:
             if self.sim:
-                # Sync simulated physics state to local attributes
-                self.x = self.sim.x
-                self.y = 0.0  # Yatay kuzey/güney 2B simülatörde kullanılmıyor
+                # Fizik motorundan YALNIZCA dikey eksen ve uçuş durumu alınır.
+                # x (doğu/batı) ve y (kuzey/güney) mantıksal görev koordinatlarıdır;
+                # move()/set_home()/return_to_home() tarafından yönetilir ve geofence
+                # denetiminin tek doğruluk kaynağıdır. Bunları 2B simülatörün tek
+                # yatay ekseninden ezmek kuzey/güney geofence'ini devre dışı bırakır.
                 self.altitude = self.sim.y
                 self.in_air = self.sim.in_air
 
@@ -112,10 +118,11 @@ class Drone:
                 self.sim.failsafe = self.failsafe_active
                 self.sim.mode = self.mode
                 self.sim.wind_speed = self.wind_speed
+                self.sim.motor_health = self.faults.motor_health
 
         self._update_battery_consumption()
         # Fizik motorundan gelen değerleri LLM/gösterim için temizle (gürültü kırpma)
-        return {
+        ham_telemetri = {
             "x": round(float(self.x), 2),
             "y": round(float(self.y), 2),
             "altitude": round(float(self.altitude), 2),
@@ -126,6 +133,9 @@ class Drone:
             "checklist_completed": self.checklist_completed,
             "wind_speed": self.wind_speed
         }
+        # Arızaların etkisini okuma noktasında uygula: güvenlik katmanı da pilot da
+        # gerçek durumu değil, SENSÖRÜN RAPORLADIĞINI görür.
+        return self.faults.apply_to_telemetry(ham_telemetri)
 
     def set_home(self, new_x, new_y):
         """ [DÜZELTME 1] Pilotun yeni kalkış/ev noktası belirlemesini sağlar """

@@ -1,0 +1,14 @@
+# Çekirdek bağımlılıklar
+google-genai>=1.47.0        # Gemini LLM istemcisi
+python-dotenv>=1.0.1        # .env dosyasından API anahtarı okuma
+PyYAML>=6.0.2               # config.yaml ayrıştırma
+pygame>=2.6.1               # 2B fizik simülatörü ve yer kontrol arayüzü
+matplotlib>=3.9.4           # radar.py telemetri/rota grafikleri
+SpeechRecognition>=3.17.0   # sesli komut (metne dökme)
+
+# Testler
+pytest>=8.2.2
+
+# İsteğe bağlı — sistem kütüphanesi gerektirir, ayrıca kurun:
+# pyaudio>=0.2.14      # mikrofon girişi (macOS: brew install portaudio)
+# pymavlink>=2.4.49    # gerçek uçuş kontrolcüsü (config: mavlink_enabled: true)

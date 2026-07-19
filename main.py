@@ -114,8 +114,10 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
             print("[LLM 2] Zincirde yüksek riskli eylem saptandı, denetleniyor...")
             observer_audit = assistant.observe_and_verify(current_telemetry, parsed_intent_list)
             if observer_audit.get("decision") == "VETOED":
-                print(f"🚨 GÖZLEMCİ VETOSU: {observer_audit.get('reason')}")
-                logger.log_action(session_id, user_command, "MULTI_ACTION", None, False, "LLM 2 Vetosu")
+                veto_reason = observer_audit.get("reason", "gerekçe belirtilmedi")
+                print(f"🚨 GÖZLEMCİ VETOSU: {veto_reason}")
+                logger.log_action(session_id, user_command, "MULTI_ACTION", None, False,
+                                  f"LLM 2 Vetosu: {veto_reason}")
                 continue
         else:
             print("[SİSTEM] Düşük riskli zincir, Gözlemci LLM bypass edildi.")
@@ -193,7 +195,7 @@ def main():
     except Exception as e:
         print(f"Config yüklenemedi: {e}"); return
 
-    drone = Drone(config["drone_settings"])
+    drone = Drone(config["drone_settings"], fault_config=config.get("fault_injection"))
     security = SecurityLayer(config["drone_settings"])
     logger = ProjectLogger()
 

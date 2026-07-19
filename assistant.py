@@ -101,5 +101,11 @@ class PilotAssistant:
                 config=types.GenerateContentConfig(system_instruction=system_instruction, response_mime_type="application/json", temperature=self.temp)
             )
             return json.loads(response.text)
-        except:
-            return {"decision": "VETOED", "reason": "Gözlemci bağlantı hatası."}
+        except json.JSONDecodeError as je:
+            print(f"[GÖZLEMCİ PARSE HATASI]: {je}")
+            return {"decision": "VETOED", "reason": "Gözlemci bağlantı hatası: yanıt ayrıştırılamadı."}
+        except Exception as e:
+            # Çıplak 'except' kullanılmaz: KeyboardInterrupt/SystemExit yutulmamalı,
+            # aksi halde pilot Ctrl+C ile sistemi durduramaz.
+            print(f"[GÖZLEMCİ GENEL HATA]: {e}")
+            return {"decision": "VETOED", "reason": f"Gözlemci bağlantı hatası: {e}"}
