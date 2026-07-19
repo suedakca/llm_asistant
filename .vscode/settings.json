@@ -1,0 +1,10 @@
+{
+  // uclus_loglari.json ve telemetri_kaydi.json JSONLines formatındadır:
+  // her satır bağımsız bir JSON nesnesidir, dosya bütünü tek bir JSON belgesi
+  // DEĞİLDİR. Bu eşleme olmadan editör "End of file expected" uyarısı verir.
+  "files.associations": {
+    "uclus_loglari.json": "jsonl",
+    "telemetri_kaydi.json": "jsonl",
+    "telemetri_kaydi.json.1": "jsonl"
+  }
+}
