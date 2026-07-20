@@ -17,14 +17,13 @@ class PilotAssistant:
         self.temp = config_dict["temperature"]
         
         asistan_instruction = """
-        Sen bir İHA Pilot Asistanısın. Pilotla derin bir konuşma hafızasına sahip akıllı bir agentsın.
-        Görevin, pilotun tekli veya çoklu/zincirleme komutlarını analiz edip sırasıyla çalıştırılacak bir komut listesi üretmektir.
+        Sen bir İHA Pilot Asistanısın. Görevin pilotun komutlarını analiz edip sırasıyla çalıştırılacak komut listesini JSON formatında üretmektir.
         
-        İRTİFA SEMANTİK KURALI:
-        - 'takeoff' eylemi için 'parameter' değeri HER ZAMAN drone'un ulaşmasını istediğin nihaî MUTLAK İRTİFA olmalıdır.
-        - Eğer bir zincir içinde ardışık yükselmeler varsa, telemetriye ve zincirdeki önceki takeoff adımlarına bakarak mutlak hedefi matematiksel olarak hesapla.
+        İrtifa Kuralları:
+        - 'takeoff' için parameter değeri drone'un ulaşacağı mutlak irtifa olmalıdır.
+        - Ardışık yükselmelerde telemetriye bakarak mutlak hedefi hesapla.
         
-        DESTEKLENEN FONKSİYONLAR:
+        Desteklenen Fonksiyonlar:
         - 'get_telemetry'
         - 'takeoff'
         - 'land'
@@ -32,24 +31,14 @@ class PilotAssistant:
         - 'move'
         - 'reboot'
         - 'set_home'
-        - 'complete_checklist': Pilot kalkış öncesi kontrollerin tamam olduğunu belirttiğinde ("kontroller tamam", "hazırız", "pervaneler ve gps tamam" vb.) çalıştırılır. Parametre almaz.
+        - 'complete_checklist'
         - 'invalid'/'ambiguous'
         
-        GÜVENLİK VE YENİDEN PLANLAMA (REPLANNING) KURALI:
-        - Eğer sistem sana "GÜVENLİK ENGELİ: [Hata Nedeni]" şeklinde bir girdi verirse, bir önceki planının güvenlik katmanına takıldığını anla.
-        - Telemetriye (özellikle Geofence sınırlarına veya bataryaya) bakarak pilotun asıl gitmek istediği yere en yakın güvenli alternatif rotayı çiz (Örn: Geofence sınırını aşan tek bir büyük adım yerine, sınır içinde kalacak şekilde yön değiştirip dolanarak giden hareketler planla).
+        Yeniden Planlama:
+        - 'GÜVENLİK ENGELİ' uyarısı aldığında engeli aşacak alternatif rotayı planla.
         
-        ÇIKTI FORMATI (ÇOK KRİTİK):
-        YALNIZCA geçerli bir JSON LİSTESİ (ARRAY) dönmelisin. Tek bir komut dahi olsa liste içinde olmalıdır.
-        Açıklama veya markdown kodu ekleme. 
-        
-        Örnek girdi: "10 metreye yüksel, ardından 20 metre doğuya git ve orada iniş yap."
-        Örnek çıktı:
-        [
-          {"action": "takeoff", "parameter": 10},
-          {"action": "move", "parameter": {"direction": "doğu", "distance": 20}},
-          {"action": "land", "parameter": null}
-        ]
+        Çıktı Formatı:
+        Yalnızca geçerli bir JSON listesi dön. Açıklama veya markdown ekleme.
         """
         self.assistant_chat = self.client.chats.create(
             model=self.model_name,
@@ -69,30 +58,23 @@ class PilotAssistant:
                 clean_text = clean_text.split("```")[1]
                 if clean_text.startswith("json"): clean_text = clean_text[4:]
             
-            # Gelen veriyi liste olarak yüklüyoruz
             parsed_list = json.loads(clean_text.strip())
             if not isinstance(parsed_list, list):
-                parsed_list = [parsed_list] # Liste değilse listeye sarmala (Defensive)
+                parsed_list = [parsed_list]
             return parsed_list
         except json.JSONDecodeError as je:
-            print(f"[ASİSTAN PARSE HATASI]: {je}")
+            print(f"[Ayrıştırma Hatası]: {je}")
             return [{"action": "invalid", "parameter": None}]
         except Exception as e:
-            print(f"[ASİSTAN GENEL HATA]: {e}")
+            print(f"[Asistan Hatası]: {e}")
             return [{"action": "invalid", "parameter": None}]
 
     def observe_and_verify(self, telemetry, parsed_intent):
-        """ Gözlemci tüm zinciri bütünsel olarak veya tek tek denetleyebilir """
         system_instruction = """
-        Sen bir İHA Güvenlik Gözlemcisisin. Görevin YALNIZCA mevcut batarya seviyesinin komut zincirini tamamlamaya yetip yetmeyeceğini değerlendirmektir.
-
-        KRİTİK KURAL: Aşağıdaki alanlara BAKMA ve bunlara göre veto verme:
-        - checklist_completed (kontrol listesi güvenlik katmanı tarafından denetlenir)
-        - wind_speed (rüzgar kontrolü güvenlik katmanı tarafından yapılır)
-        - in_air durumu (durum geçerliliği güvenlik katmanının görevidir)
-
-        SADECE şu soruyu sor: "Mevcut batarya (%X) bu zinciri tamamlamak için yeterli mi?"
-        JSON formatında dön: {"decision": "APPROVED" veya "VETOED", "reason": "neden"}
+        Sen bir İHA Güvenlik Gözlemcisisin. Görevin mevcut batarya seviyesinin komut zincirini tamamlamaya yetip yetmeyeceğini değerlendirmektir.
+        
+        Yalnızca batarya yeterliliğini denetle ve JSON formatında yanıt dön:
+        {"decision": "APPROVED" veya "VETOED", "reason": "neden"}
         """
         audit_context = f"TELEMETRİ: {json.dumps(telemetry)}\nKOMUT_ZİNCİRİ: {json.dumps(parsed_intent)}"
         try:
@@ -102,10 +84,8 @@ class PilotAssistant:
             )
             return json.loads(response.text)
         except json.JSONDecodeError as je:
-            print(f"[GÖZLEMCİ PARSE HATASI]: {je}")
-            return {"decision": "VETOED", "reason": "Gözlemci bağlantı hatası: yanıt ayrıştırılamadı."}
+            print(f"[Gözlemci Ayrıştırma Hatası]: {je}")
+            return {"decision": "VETOED", "reason": "Gözlemci yanıtı ayrıştırılamadı."}
         except Exception as e:
-            # Çıplak 'except' kullanılmaz: KeyboardInterrupt/SystemExit yutulmamalı,
-            # aksi halde pilot Ctrl+C ile sistemi durduramaz.
-            print(f"[GÖZLEMCİ GENEL HATA]: {e}")
+            print(f"[Gözlemci Hatası]: {e}")
             return {"decision": "VETOED", "reason": f"Gözlemci bağlantı hatası: {e}"}

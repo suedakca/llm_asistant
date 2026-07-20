@@ -1,7 +1,7 @@
 # main.py
 import yaml
 import uuid
-import speech_recognition as sr  # Yeni: Ses tanıma kütüphanesi
+import speech_recognition as sr
 from drone import Drone
 from security import SecurityLayer
 from assistant import PilotAssistant
@@ -14,21 +14,17 @@ def get_voice_input():
     try:
         mic = sr.Microphone()
     except (AttributeError, OSError) as e:
-        # PyAudio yüklü değil veya mikrofon bulunamadı — programı çökertmeden geç
         print(f"❌ [SİSTEM] Sesli komut kullanılamıyor: {e}")
         print("   'pip3 install pyaudio' ile kurabilirsiniz. Şimdilik klavye (K) kullanın.")
         return ""
 
     with mic as source:
         print("\n🎤 [MİKROFON] Dinleniyor... Konuşun...")
-        # Ortam gürültüsünü otomatik dengeler
         r.adjust_for_ambient_noise(source, duration=0.5)
         try:
-            # En fazla 5 saniye sessizlik bekler, 10 saniyelik komut alabilir
             audio = r.listen(source, timeout=5, phrase_time_limit=20)
             print("⏳ [SİSTEM] Ses işleniyor, metne dökülüyor...")
 
-            # Google Speech-to-Text motorunu Türkçe diliyle tetikliyoruz
             text = r.recognize_google(audio, language="tr-TR")
             print(f"🗣️  [SESLİ KOMUT ALGILANDI]: \"{text}\"")
             return text
@@ -43,8 +39,7 @@ def get_voice_input():
             return ""
 
 def run_command_loop(drone, security, assistant, logger, config, session_id, simulator=None):
-    """ Pilot komutlarını okuyan ve işleyen ana döngü. Simülatör varsa ana thread'de
-        pygame penceresi çalışırken bu döngü arka thread'de çalışır. """
+    """ Pilot komutlarını okuyan ve işleyen döngü """
     emergency_words = config["safety_settings"]["emergency_keywords"]
     high_risk_list = config["llm_settings"]["high_risk_actions"]
 
@@ -53,13 +48,12 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
     print("🎙️  Sesli komut moduna geçmek için mikrofona konuşma tetiklerini kullanabilirsiniz.")
 
     while True:
-        # Giriş yöntemi seç
         giriş_tipi = input("\nGiriş Yöntemi [K: Klavye / S: Sesli Komut / Ç: Çıkış]: ").lower().strip()
 
         if giriş_tipi in ["ç", "çıkış", "exit"]:
             logger.print_session_summary(session_id, drone.get_telemetry())
             if simulator is not None:
-                simulator.running = False  # Pygame penceresini de kapat
+                simulator.running = False
             break
 
         if giriş_tipi == "s":
@@ -75,22 +69,18 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
         if not user_command.strip():
             continue
 
-        # Komut alındıktan sonra güncel telemetriyi çek
         current_telemetry = drone.get_telemetry()
 
-        # Batarya tükenme failsafe'ini bir kez logla, modu kilitle
         if current_telemetry["failsafe"] and drone.mode == "EMERGENCY_LAND":
             logger.log_action(session_id, "SİSTEM_OTOMATİK_BATARYA_KAYBI", "EMERGENCY_STOP", None, True, "Otomatik batarya tükenme failsafe tetiklendi.")
             drone.mode = "CRASHED_LOCKED"
 
-        # Acil durdurma — LLM'i bypass eder
         if user_command.upper() in emergency_words:
             sonuc = drone.emergency_stop()
             print(sonuc)
             logger.log_action(session_id, user_command, "EMERGENCY_STOP", None, True, sonuc)
             continue
 
-        # Failsafe kilitliyse yalnızca reboot'a izin ver
         if current_telemetry["failsafe"]:
             print("Asistan Yanıtı: Sistem Failsafe modunda kilitlidir. Lütfen önce 'reboot' yapın.")
             if user_command.lower() in ["sistemi yeniden başlat", "reboot"]:
@@ -99,30 +89,26 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
                 logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
             continue
 
-        print("[LLM 1] Çoklu görev zinciri analiz ediliyor...")
+        print("[Planlama] Komut analiz ediliyor...")
         parsed_intent_list = assistant.parse_command(user_command, current_telemetry)
-        print(f"-> LLM 1 Kararı: {len(parsed_intent_list)} adet ardışık alt görev planlandı.")
+        print(f"-> {len(parsed_intent_list)} alt görev planlandı.")
 
         if parsed_intent_list and parsed_intent_list[0].get("action") in ["ambiguous", "invalid"]:
             print("Asistan Yanıtı: Komut anlaşılamadı.")
             logger.log_action(session_id, user_command, "Hata", None, False, "Geçersiz")
             continue
 
-        # LLM 2: Zincirde yüksek riskli eylem varsa gözlemciye gönder
         has_high_risk = any(cmd.get("action") in high_risk_list for cmd in parsed_intent_list)
         if has_high_risk:
-            print("[LLM 2] Zincirde yüksek riskli eylem saptandı, denetleniyor...")
+            print("[Güvenlik] Riskli eylem denetleniyor...")
             observer_audit = assistant.observe_and_verify(current_telemetry, parsed_intent_list)
             if observer_audit.get("decision") == "VETOED":
                 veto_reason = observer_audit.get("reason", "gerekçe belirtilmedi")
-                print(f"🚨 GÖZLEMCİ VETOSU: {veto_reason}")
+                print(f"Gözlemci Reddi: {veto_reason}")
                 logger.log_action(session_id, user_command, "MULTI_ACTION", None, False,
-                                  f"LLM 2 Vetosu: {veto_reason}")
+                                  f"Gözlemci Reddi: {veto_reason}")
                 continue
-        else:
-            print("[SİSTEM] Düşük riskli zincir, Gözlemci LLM bypass edildi.")
 
-        # Ardışık görev yürütme motoru (Dinamik Yeniden Planlama Destekli)
         zincir_basarili = True
         gecici_sonuclar = []
         max_replans = 2
@@ -133,49 +119,48 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
             siradaki_gorev = parsed_intent_list[idx]
             act = siradaki_gorev.get("action")
             param = siradaki_gorev.get("parameter")
-            print(f"➡️  Alt Görev İşleniyor: Action='{act}' | Parameter={param}")
+            print(f"➡️ Görev: {act} | Parametre: {param}")
 
             if act == "reboot":
                 if drone.in_air:
-                    print("   🚨 [GÜVENLİK ENGELİ]: Havada iken reboot yapılamaz. Önce iniş yapın.")
-                    logger.log_action(session_id, user_command, "reboot", None, False, "Güvenlik reddi: havada reboot isteği")
+                    print("   [Güvenlik Reddi]: Havada reboot yapılamaz.")
+                    logger.log_action(session_id, user_command, "reboot", None, False, "Havada reboot isteği")
                     zincir_basarili = False
                     break
                 sonuc = drone.reboot()
                 print(sonuc)
                 logger.log_action(session_id, user_command, "reboot", None, True, sonuc)
-                zincir_basarili = False  # reboot özel durum, genel başarı mesajı basma
+                zincir_basarili = False
                 break
 
             guncel_telemetri = drone.get_telemetry()
             onay, sonuc = security.validate_and_execute(drone, act, param, telemetri=guncel_telemetri)
             if onay:
-                print(f"   [ONAYLANDI]: {sonuc}")
+                print(f"   [Onaylandı]: {sonuc}")
                 gecici_sonuclar.append(sonuc)
                 logger.log_action(session_id, user_command, act, param, True, sonuc)
                 idx += 1
             else:
-                print(f"   🚨 [GÜVENLİK ENGELİ]: {sonuc}")
+                print(f"   [Güvenlik Reddi]: {sonuc}")
                 logger.log_action(session_id, user_command, act, param, False, f"Engellendi: {sonuc}")
                 
                 if replan_count < max_replans:
                     replan_count += 1
-                    print(f"🔄 [DİNAMİK YENİDEN PLANLAMA] Asistan alternatif güvenli rota planlıyor... (Deneme {replan_count}/{max_replans})")
+                    print(f"[Yeniden Planlama] Alternatif rota deneniyor ({replan_count}/{max_replans})...")
                     
-                    # LLM'e engeli ve güncel telemetriyi bildirerek yeni bir rota istiyoruz
-                    replan_prompt = f"GÜVENLİK ENGELİ: '{act}' eylemi '{sonuc}' nedeniyle güvenlik katmanına takıldı. Lütfen bu engeli aşacak veya en yakın güvenli alternatif rotayı/eylemi çizecek yeni bir görev zinciri planla. Sadece yeni komut listesini JSON array formatında dön."
+                    replan_prompt = f"GUVENLIK ENGELI: '{act}' eylemi '{sonuc}' nedeniyle guvenlik katmanina takildi. Lutfen bu engeli asacak veya en yakin guvenli alternatif rotayi/eylemi cizecek yeni bir gorev zinciri planla. Sadece yeni komut listesini JSON array formatinda don."
                     
                     try:
                         new_intent_list = assistant.parse_command(replan_prompt, drone.get_telemetry())
                         if new_intent_list and new_intent_list[0].get("action") not in ["invalid", "ambiguous"]:
-                            print(f"   [YENİ ÖNERİLEN ROTA]: {new_intent_list}")
+                            print(f"   [Yeni Rota]: {new_intent_list}")
                             parsed_intent_list = new_intent_list
-                            idx = 0  # Yeni rota zincirini baştan başlat
+                            idx = 0
                             continue
                     except Exception as e:
-                        print(f"   [YENİDEN PLANLAMA HATASI]: {e}")
+                        print(f"   [Planlama Hatası]: {e}")
                 
-                print("   🚨 [PLANLAMA BAŞARISIZ]: Güvenli alternatif bulunamadı veya limit aşıldı. Görev zinciri KESİLDİ!")
+                print("   [Planlama Başarısız]: Güvenli alternatif bulunamadı.")
                 zincir_basarili = False
                 break
 
@@ -202,14 +187,13 @@ def main():
     try:
         assistant = PilotAssistant(config["llm_settings"])
     except ValueError as e:
-        print(f"\n❌ [SİSTEM BAŞLATMA HATASI]: {e}"); return
+        print(f"\n [SİSTEM BAŞLATMA HATASI]: {e}"); return
 
     from simulator import global_simulator
-    # GUI Kontrol Arayüzünü Yapılandır
     global_simulator.init_gui_control(drone, security, assistant, logger, config, session_id)
 
     print("🎮 [SİSTEM] Arayüz Destekli Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
-    global_simulator.run_pygame()  # Ana thread'de bloke eder (pencere kapanınca döner)
+    global_simulator.run_pygame()
 
 
 if __name__ == "__main__":

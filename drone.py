@@ -28,8 +28,8 @@ class Drone:
         self.takeoff_time = None 
         self.failsafe_active = False
         self.checklist_completed = False
-        self._battery_debt = 0.0  # kesirli tüketim birikimi
-        self.faults = FaultInjector(fault_config)  # kontrollü arıza enjeksiyonu
+        self._battery_debt = 0.0
+        self.faults = FaultInjector(fault_config)
         self.sim = global_simulator if SIMULATOR_AVAILABLE else None
 
         if drone_config and "battery_drain_per_second" in drone_config:
@@ -64,7 +64,6 @@ class Drone:
             gecen_sure = time.time() - self.takeoff_time
             self.takeoff_time = time.time()
 
-            # Batarya arızası tüketimi hızlandırır (çarpan yokken 1.0)
             self._battery_debt += gecen_sure * self.drain_rate * self.faults.battery_drain_multiplier
             tam_tuketim = int(self._battery_debt)
             if tam_tuketim > 0:
@@ -72,7 +71,7 @@ class Drone:
                 self.battery = max(0, self.battery - tam_tuketim)
 
                 if self.battery <= 0 and not self.failsafe_active:
-                    msg = "🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] BATARYA %0! MOTOR KESİLDİ!"
+                    msg = "[GÜVENLİK] Batarya %0! Motor kesildi."
                     print("\n" + msg)
                     if self.sim:
                         self.sim.add_gui_log(msg)
@@ -94,8 +93,8 @@ class Drone:
                 elif msg_type == "SYS_STATUS":
                     self.battery = msg.battery_remaining
                 elif msg_type == "LOCAL_POSITION_NED":
-                    self.y = float(msg.x)  # North
-                    self.x = float(msg.y)  # East
+                    self.y = float(msg.x)
+                    self.x = float(msg.y)
         except Exception:
             pass
 
@@ -104,15 +103,9 @@ class Drone:
             self._recv_mavlink_telemetry()
         else:
             if self.sim:
-                # Fizik motorundan YALNIZCA dikey eksen ve uçuş durumu alınır.
-                # x (doğu/batı) ve y (kuzey/güney) mantıksal görev koordinatlarıdır;
-                # move()/set_home()/return_to_home() tarafından yönetilir ve geofence
-                # denetiminin tek doğruluk kaynağıdır. Bunları 2B simülatörün tek
-                # yatay ekseninden ezmek kuzey/güney geofence'ini devre dışı bırakır.
                 self.altitude = self.sim.y
                 self.in_air = self.sim.in_air
 
-                # Sync control states back to the simulator
                 self.sim.battery = float(self.battery)
                 self.sim.checklist_completed = self.checklist_completed
                 self.sim.failsafe = self.failsafe_active
@@ -121,7 +114,6 @@ class Drone:
                 self.sim.motor_health = self.faults.motor_health
 
         self._update_battery_consumption()
-        # Fizik motorundan gelen değerleri LLM/gösterim için temizle (gürültü kırpma)
         ham_telemetri = {
             "x": round(float(self.x), 2),
             "y": round(float(self.y), 2),
@@ -133,12 +125,10 @@ class Drone:
             "checklist_completed": self.checklist_completed,
             "wind_speed": self.wind_speed
         }
-        # Arızaların etkisini okuma noktasında uygula: güvenlik katmanı da pilot da
-        # gerçek durumu değil, SENSÖRÜN RAPORLADIĞINI görür.
         return self.faults.apply_to_telemetry(ham_telemetri)
 
     def set_home(self, new_x, new_y):
-        """ [DÜZELTME 1] Pilotun yeni kalkış/ev noktası belirlemesini sağlar """
+        """ Pilotun yeni kalkış/ev noktası belirlemesini sağlar """
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
         if self.in_air: return "Hata: Havada iken ev konumu (Home) değiştirilemez! Önce inmeniz gerekir."
         
@@ -152,11 +142,10 @@ class Drone:
         self.in_air = False
         self.mode = "EMERGENCY_LAND"
         self._battery_debt = 0.0
-        # Görsel simülatörü de failsafe'e al: motorlar kesilir, araç olduğu yerde düşer
         if not self.mavlink_enabled and self.sim:
             self.sim.failsafe = True
             self.sim.in_air = False
-            self.sim.vx = 0.0  # Yatay savrulmayı durdur (dik düşüş)
+            self.sim.vx = 0.0
             self.sim.vy = 0.0
         return "[FAILSAFE AKTİF] Motor kesildi! İHA yere indirildi ve sistem kilitlendi."
 
@@ -172,7 +161,6 @@ class Drone:
         self.x = 0.0
         self.y = 0.0
         self.altitude = 0.0
-        # Görsel simülatörü de sıfırla: aracı başlangıç (home) noktasına indir
         if not self.mavlink_enabled and self.sim:
             self.sim.failsafe = False
             self.sim.in_air = False
@@ -189,8 +177,6 @@ class Drone:
     def takeoff(self, target_altitude):
         if self.failsafe_active: return "Hata: Sistem Failsafe modunda kilitli!"
 
-        # Hedef irtifayı temizle: gürültülü fizik değerleri (ör. 30.03798...) yerine
-        # tek ondalıklı, düzgün bir setpoint kullan.
         target_altitude = round(float(target_altitude), 1)
 
         if self.in_air:
@@ -205,7 +191,6 @@ class Drone:
             
         if self.mavlink_enabled and self.mavlink_conn:
             try:
-                # ARM & TAKEOFF
                 self.mavlink_conn.mav.command_long_send(
                     self.mavlink_conn.target_system, self.mavlink_conn.target_component,
                     mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0,
@@ -254,7 +239,7 @@ class Drone:
         self.checklist_completed = False
 
         if self.battery <= 0:
-            msg = "[KRİTİK GÜVENLİK SİSTEMİ] İNİŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!"
+            msg = "[GÜVENLİK] İniş esnasında batarya %0! Motor kesildi."
             print("\n" + msg)
             if self.sim:
                 self.sim.add_gui_log(msg)
@@ -292,7 +277,7 @@ class Drone:
         self.checklist_completed = False
 
         if self.battery <= 0:
-            msg = "🚨🚨🚨 [KRİTİK GÜVENLİK SİSTEMİ] EVE DÖNÜŞ ESNASINDA BATARYA %0! MOTOR KESİLDİ!"
+            msg = "[GÜVENLİK] Eve dönüş esnasında batarya %0! Motor kesildi."
             print("\n" + msg)
             if self.sim:
                 self.sim.add_gui_log(msg)
@@ -333,7 +318,6 @@ class Drone:
                 print(f"[MAVLINK HATA] Move paketi gönderilemedi: {e}")
 
         if not self.mavlink_enabled and self.sim:
-            # 2D düzlemde yatay hareketleri simülatörün x hedefine yönlendir
             if direction in ["kuzey", "north", "ileri", "doğu", "east", "sağ"]:
                 self.sim.target_x += float(distance)
             elif direction in ["güney", "south", "geri", "batı", "west", "sol"]:

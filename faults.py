@@ -1,24 +1,17 @@
 # faults.py
 """ Kontrollü arıza enjeksiyonu.
 
-    Güvenlik katmanının yalnızca "temiz" telemetriyle değil, bozulmuş sensör
-    ve donanım koşullarında da doğru davrandığını göstermek/test etmek için
-    kullanılır.
-
-    Tasarım ilkesi: arızalar DETERMİNİSTİKTİR. Sabit sapma değerleri kullanılır
-    (rastgelelik yok), böylece aynı senaryo her çalıştırmada aynı sonucu verir
-    ve testler tekrarlanabilir olur.
+    Güvenlik katmanının bozulmuş sensör ve donanım koşullarında da
+    doğru davrandığını test etmek için kullanılır.
 """
 
-# Arıza tipleri
-GPS_LOSS = "gps_loss"                    # Konum sinyali kaybı
-SENSOR_DRIFT = "sensor_drift"            # Barometre/irtifa sensörü sapması
-MOTOR_DEGRADATION = "motor_degradation"  # Motor güç kaybı
-BATTERY_FAULT = "battery_fault"          # Hızlanmış batarya tüketimi
+GPS_LOSS = "gps_loss"
+SENSOR_DRIFT = "sensor_drift"
+MOTOR_DEGRADATION = "motor_degradation"
+BATTERY_FAULT = "battery_fault"
 
 FAULT_TYPES = (GPS_LOSS, SENSOR_DRIFT, MOTOR_DEGRADATION, BATTERY_FAULT)
 
-# Türkçe görünen adlar (arayüz ve log mesajları için)
 FAULT_LABELS = {
     GPS_LOSS: "GPS SİNYAL KAYBI",
     SENSOR_DRIFT: "İRTİFA SENSÖRÜ SAPMASI",
@@ -26,9 +19,8 @@ FAULT_LABELS = {
     BATTERY_FAULT: "BATARYA ARIZASI",
 }
 
-# Varsayılan güvenlik eşikleri (config.yaml -> fault_injection ile ezilebilir)
-MIN_SAFE_MOTOR_HEALTH = 0.6   # bu değerin altında kalkış yasak
-MAX_SAFE_DRIFT_M = 3.0        # bu sapmanın üstünde irtifa komutu yasak
+MIN_SAFE_MOTOR_HEALTH = 0.6
+MAX_SAFE_DRIFT_M = 3.0
 
 
 class FaultInjector:
@@ -36,7 +28,6 @@ class FaultInjector:
 
     def __init__(self, config=None):
         self.active = {}
-        # GPS kaybında dondurulacak son bilinen konum
         self._last_known_x = 0.0
         self._last_known_y = 0.0
 
@@ -46,7 +37,6 @@ class FaultInjector:
         self.max_safe_drift_m = float(
             ayarlar.get("max_safe_altitude_drift", MAX_SAFE_DRIFT_M))
 
-    # === ARIZA YÖNETİMİ ===
     def inject(self, fault_type, **params):
         """ Arızayı etkinleştirir. Bilinmeyen tip ValueError fırlatır. """
         if fault_type not in FAULT_TYPES:
@@ -86,47 +76,34 @@ class FaultInjector:
     def any_active(self):
         return bool(self.active)
 
-    # === TÜREV DEĞERLER ===
     @property
     def motor_health(self):
-        """ Motor sağlığı 0.0 (tam arıza) - 1.0 (sağlam) """
         if MOTOR_DEGRADATION not in self.active:
             return 1.0
         return self.active[MOTOR_DEGRADATION]["health"]
 
     @property
     def battery_drain_multiplier(self):
-        """ Batarya tüketim çarpanı (1.0 = normal) """
         if BATTERY_FAULT not in self.active:
             return 1.0
         return self.active[BATTERY_FAULT]["drain_multiplier"]
 
     @property
     def altitude_drift(self):
-        """ İrtifa sensörünün gerçek değerden sapması (metre) """
         if SENSOR_DRIFT not in self.active:
             return 0.0
         return float(self.active[SENSOR_DRIFT]["drift_m"])
 
-    # === ETKİLERİN UYGULANMASI ===
     def apply_to_telemetry(self, telemetry):
-        """ Ham telemetriyi arızaların gördüğü hâle çevirir.
-
-        Gerçek sistemde güvenlik katmanı da pilot da yalnızca SENSÖRÜN
-        RAPORLADIĞINI görür — gerçek konumu değil. Bu yüzden bozulma burada,
-        okuma noktasında uygulanır.
-        """
+        """ Ham telemetriye aktif arıza bozulmalarını uygular. """
         bozulmus = dict(telemetry)
 
-        # Sağlık bayrakları — arıza yokken de her zaman mevcut olmalı ki
-        # güvenlik katmanı ve arayüz tek bir sözleşmeye güvenebilsin.
         bozulmus["gps_healthy"] = not self.is_active(GPS_LOSS)
         bozulmus["motor_health"] = self.motor_health
         bozulmus["altitude_drift"] = self.altitude_drift
         bozulmus["active_faults"] = sorted(self.active.keys())
 
         if self.is_active(GPS_LOSS):
-            # Sinyal kaybında konum güncellenmez — son bilinen değerde donar
             bozulmus["x"] = self._last_known_x
             bozulmus["y"] = self._last_known_y
         else:
@@ -134,20 +111,15 @@ class FaultInjector:
             self._last_known_y = telemetry.get("y", 0.0)
 
         if self.is_active(SENSOR_DRIFT):
-            # Barometre gerçekte olduğundan farklı bir irtifa raporlar
             bozulmus["altitude"] = round(
                 float(telemetry.get("altitude", 0.0)) + self.altitude_drift, 2)
 
         return bozulmus
 
-    # === GÜVENLİK DEĞERLENDİRMESİ ===
     def blocking_reason(self, action, telemetry):
         """ Bu eylem mevcut arıza durumunda yasaklanmalı mı?
 
-        Dönen: engelleme gerekçesi (str) veya None.
-
-        Kural: iniş ve telemetri okuma HER ZAMAN serbesttir — arıza hâlinde
-        pilotun elinden aracı indirme imkânı alınamaz.
+        İniş ve telemetri okuma her zaman serbesttir.
         """
         if action in ("land", "get_telemetry"):
             return None

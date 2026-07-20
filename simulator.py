@@ -6,7 +6,7 @@ import threading
 
 import faults as fault_types
 
-# Arayüzdeki arıza enjeksiyonu kısayolları (F8: tümünü temizle)
+# Arıza enjeksiyonu kısayolları
 FAULT_KEYS = {
     pygame.K_F5: fault_types.GPS_LOSS,
     pygame.K_F6: fault_types.SENSOR_DRIFT,
@@ -16,47 +16,40 @@ FAULT_KEYS = {
 
 class DroneSimulator:
     def __init__(self):
-        # Durum Değişkenleri (Fiziksel)
-        self.x = 0.0          # Yatay Konum (metre)
-        self.y = 0.0          # Dikey Konum / İrtifa (metre)
+        self.x = 0.0
+        self.y = 0.0
         self.vx = 0.0
         self.vy = 0.0
-        self.theta = 0.0      # Eğim açısı (radyan, + saat yönü)
-        self.omega = 0.0      # Açısal hız (rad/sn)
+        self.theta = 0.0
+        self.omega = 0.0
 
-        # Hedef Değerler (Setpoints)
         self.target_x = 0.0
         self.target_y = 0.0
 
-        # Sistem Parametreleri
-        self.m = 1.5          # Kütle (kg)
-        self.g = 9.81         # Yerçekimi ivmesi (m/s^2)
-        self.I = 0.015        # Eylemsizlik momenti (kg*m^2)
-        self.d = 0.25         # Rotor-merkez mesafesi (metre)
+        self.m = 1.5
+        self.g = 9.81
+        self.I = 0.015
+        self.d = 0.25
 
-        # PID Parametreleri
-        # 1. İrtifa PID (Yükseklik)
+        # PID parametreleri
         self.kp_alt = 15.0
         self.ki_alt = 0.1
         self.kd_alt = 8.0
         self.alt_integral = 0.0
         self.last_alt_error = 0.0
 
-        # 2. Konum PID (Yatay Pozisyon -> Hedef Eğim Açısı üretir)
         self.kp_pos = 0.15
         self.ki_pos = 0.0
         self.kd_pos = 0.4
         self.pos_integral = 0.0
         self.last_pos_error = 0.0
 
-        # 3. Açı PID (Eğim Açısı -> Motor Diferansiyel İtkisi üretir)
         self.kp_ang = 8.0
         self.ki_ang = 0.0
         self.kd_ang = 0.5
         self.ang_integral = 0.0
         self.last_ang_error = 0.0
 
-        # İletişim ve Kontrol Bayrakları
         self.in_air = False
         self.failsafe = False
         self.checklist_completed = False
@@ -64,13 +57,11 @@ class DroneSimulator:
         self.mode = "DISARMED"
         self.wind_speed = 15.0
         self.running = True
-        self.motor_health = 1.0   # 1.0 = sağlam, arıza enjeksiyonuyla düşer
-        self.recorder = None      # TelemetryRecorder (init_gui_control ile bağlanır)
+        self.motor_health = 1.0
+        self.recorder = None
 
-        # Rüzgar Simülasyonu
         self.wind_force_x = 0.0
 
-        # GUI & Kontrol Arayüzü Değişkenleri
         self.drone = None
         self.security = None
         self.assistant = None
@@ -79,7 +70,7 @@ class DroneSimulator:
         self.session_id = None
         
         self.input_text = ""
-        self.input_mode = "keyboard"  # 'keyboard' veya 'voice'
+        self.input_mode = "keyboard"
         self.status_message = "HAZIR"
         self.gui_logs = []
         self.is_textbox_focused = False
@@ -105,7 +96,7 @@ class DroneSimulator:
             self.emergency_words = ["ABORT", "MOTORU KES", "ACİL DURDURMA", "STOP"]
             self.high_risk_list = ["takeoff", "move", "set_home"]
 
-        # Telemetri zaman serisi kaydını başlat (config'ten kapatılabilir)
+        # Telemetri kaydı
         kayit_ayarlari = (config or {}).get("telemetry_recording", {})
         if kayit_ayarlari.get("enabled", True):
             from telemetry import TelemetryRecorder
@@ -152,7 +143,6 @@ class DroneSimulator:
 
     def _execute_command_worker(self, user_command):
         try:
-            # Acil durdurma — LLM'i bypass eder
             if user_command.upper() in self.emergency_words:
                 sonuc = self.drone.emergency_stop()
                 self.add_gui_log(f"Sistem: {sonuc}")
@@ -160,7 +150,6 @@ class DroneSimulator:
                 self.status_message = "HAZIR"
                 return
 
-            # Failsafe kilitliyse yalnızca reboot'a izin ver
             current_telemetry = self.drone.get_telemetry()
             if current_telemetry["failsafe"]:
                 self.add_gui_log("Asistan: Sistem kilitli! reboot yapın.")
@@ -181,7 +170,6 @@ class DroneSimulator:
                 self.status_message = "HAZIR"
                 return
 
-            # LLM 2: Gözlemci
             has_high_risk = any(cmd.get("action") in self.high_risk_list for cmd in parsed_intent_list)
             if has_high_risk:
                 self.status_message = "Denetleniyor..."
@@ -194,7 +182,6 @@ class DroneSimulator:
                     self.status_message = "HAZIR"
                     return
 
-            # Yürütme motoru
             zincir_basarili = True
             gecici_sonuclar = []
             max_replans = 2
@@ -223,7 +210,6 @@ class DroneSimulator:
                 guncel_telemetri = self.drone.get_telemetry()
                 onay, sonuc = self.security.validate_and_execute(self.drone, act, param, telemetri=guncel_telemetri)
                 
-                # Visual feedback delay
                 time.sleep(1.0)
 
                 if onay:
@@ -303,7 +289,6 @@ class DroneSimulator:
 
     def update_physics(self, dt):
         if self.failsafe:
-            # Failsafe durumunda motorlar kesilir, yerçekimi etkisinde düşer
             ay = -self.g
             ax = self.wind_force_x / self.m
             alpha = 0.0
@@ -320,8 +305,7 @@ class DroneSimulator:
                 self.theta = 0.0
             return
 
-        # Araç yerde ve kalkış komutu yoksa: park halinde tut.
-        # Aksi halde rüzgar kuvveti motorlar kapalıyken bile aracı sürükler.
+        # Yerdeyken hareketsiz tut
         if not self.in_air and self.target_y <= 0.0 and self.y <= 0.0:
             self.y = 0.0
             self.vx = 0.0
@@ -331,73 +315,52 @@ class DroneSimulator:
             self.wind_force_x = 0.0
             return
 
-        # Rüzgarın İHA'ya yatay etkisi (basit kuvvet)
         self.wind_force_x = (self.wind_speed * 0.05) * math.sin(time.time() * 0.5)
 
-        # 1. İRTİFA KONTROLÜ (Dikey itki hesaplama)
         alt_error = self.target_y - self.y
         self.alt_integral += alt_error * dt
         self.alt_integral = max(-10.0, min(10.0, self.alt_integral))
-        # Hız bazlı sönümleme (D terimi için gürültüyü önler)
         alt_derivative = -self.vy
         self.last_alt_error = alt_error
 
-        # Yerçekimini dengeleyecek temel itki (Feedforward) + PID düzeltmesi
         total_thrust = (self.m * self.g) + (self.kp_alt * alt_error + self.ki_alt * self.alt_integral + self.kd_alt * alt_derivative)
-        total_thrust = max(0.0, min(30.0, total_thrust)) # Motor itiş limiti (Maks 30 Newton)
+        total_thrust = max(0.0, min(30.0, total_thrust))
 
-        # Motor arızası üretilebilen itkiyi kısar. Sağlık yeterince düşerse
-        # itki ağırlığı karşılayamaz ve araç irtifasını koruyamaz — istenen
-        # davranış budur: pilot güç kaybını uçuşta hisseder.
         total_thrust *= self.motor_health
 
-        # Havada değilse ve hedef yükseklik sıfırsa motorları tamamen kapat
         if not self.in_air and self.target_y == 0.0:
             total_thrust = 0.0
 
-        # 2. YATAY KONUM KONTROLÜ (Hedef Eğim Açısı)
         pos_error = self.target_x - self.x
         self.pos_integral += pos_error * dt
         self.pos_integral = max(-5.0, min(5.0, self.pos_integral))
-        # Hız bazlı sönümleme
         pos_derivative = -self.vx
         self.last_pos_error = pos_error
 
-        # Hedef eğim açısını (radyan) hesapla ve sınırla (Maksimum ±18 derece)
         target_theta = -(self.kp_pos * pos_error + self.ki_pos * self.pos_integral + self.kd_pos * pos_derivative)
         target_theta = max(-0.3, min(0.3, target_theta))
 
-        # Havada değilse eğim yapma
         if not self.in_air:
             target_theta = 0.0
 
-        # 3. AÇI KONTROLÜ (Motor diferansiyel itkisi / tork hesaplama)
         ang_error = target_theta - self.theta
         self.ang_integral += ang_error * dt
         self.ang_integral = max(-1.0, min(1.0, self.ang_integral))
-        # Açısal hız bazlı sönümleme (omega)
         ang_derivative = -self.omega
         self.last_ang_error = ang_error
 
         torque = self.kp_ang * ang_error + self.ki_ang * self.ang_integral + self.kd_ang * ang_derivative
-        torque = max(-5.0, min(5.0, torque)) # Maks tork sınırı
+        torque = max(-5.0, min(5.0, torque))
 
-        # Motor İtme Kuvvetlerinin Ayrıştırılması
-        # T_L: Sol Motor, T_R: Sağ Motor
-        T_L = total_thrust / 2.0 - torque / (2.0 * self.d)
-        T_R = total_thrust / 2.0 + torque / (2.0 * self.d)
+        # Sol ve sağ motor itki ayrımı
+        T_L = max(0.0, total_thrust / 2.0 - torque / (2.0 * self.d))
+        T_R = max(0.0, total_thrust / 2.0 + torque / (2.0 * self.d))
 
-        # Negatif itkiyi engelle
-        T_L = max(0.0, T_L)
-        T_R = max(0.0, T_R)
-
-        # Net Kuvvet ve İvmeler
         net_thrust = T_L + T_R
         ax = (-net_thrust * math.sin(self.theta) + self.wind_force_x) / self.m
         ay = (net_thrust * math.cos(self.theta) - self.m * self.g) / self.m
         alpha = (T_R - T_L) * self.d / self.I
 
-        # Euler İntegrasyonu ile durum güncelleme
         self.vx += ax * dt
         self.vy += ay * dt
         self.omega += alpha * dt
@@ -406,30 +369,23 @@ class DroneSimulator:
         self.y += self.vy * dt
         self.theta += self.omega * dt
 
-        # Sınır Kontrolleri (Yere çarpma)
         if self.y <= 0.0:
             self.y = 0.0
             self.vy = 0.0
             self.vx = 0.0
             self.theta = 0.0
             self.omega = 0.0
-            # Hedef yer seviyesindeyse (iniş/eve dönüş sonrası) yere değince
-            # 'havada' bayrağını temizle — böylece reboot gibi yer komutları çalışır.
             if self.target_y <= 0.0:
                 self.in_air = False
 
-        # Rota geçmişi ve pervane dönüş açısı güncelleme
         if not hasattr(self, "trail_history"):
             self.trail_history = []
         if not hasattr(self, "propeller_angle"):
             self.propeller_angle = 0.0
 
-        # Pervaneleri döndür (eğer havada veya motorlar çalışıyorsa)
-        # failsafe kilitliyken motorlar kapandığı için dönmez
         if (self.in_air or self.target_y > 0.0) and not self.failsafe:
             self.propeller_angle = (self.propeller_angle + 35.0 * dt) % (2.0 * math.pi)
 
-        # Havada ise rota geçmişine konum ekle (maksimum 150 nokta)
         if self.in_air and self.y > 0.0:
             self.trail_history.append((self.x, self.y))
             if len(self.trail_history) > 150:
@@ -442,26 +398,23 @@ class DroneSimulator:
         pygame.display.set_caption("İHA Yer Kontrol İstasyonu — Uçuş Kontrol Merkezi")
         clock = pygame.time.Clock()
 
-        # ============================================================
-        #  T A S A R I M   S I S T E M I  (Renk Paleti — Aviation Dark)
-        # ============================================================
-        BG_DEEP     = (10, 14, 22)     # Ana zemin
-        HEADER_BG   = (14, 19, 30)     # Üst başlık çubuğu
-        PANEL       = (18, 24, 36)     # Kart zemini
-        PANEL_2     = (23, 30, 45)     # İç yüzey / stat tile
-        PANEL_INSET = (11, 15, 24)     # Konsol / textbox iç zemin
-        BORDER      = (38, 48, 68)     # İnce kenarlık
-        BORDER_HI   = (58, 74, 102)    # Vurgulu kenarlık
-        TEXT        = (226, 232, 244)  # Ana metin
-        TEXT_DIM    = (140, 152, 174)  # İkincil metin
-        TEXT_MUTE   = (86, 98, 120)    # Silik metin
-        ACCENT      = (56, 189, 248)   # Camgöbeği vurgu
-        TEAL        = (45, 212, 191)   # Teal
-        OK          = (52, 211, 153)   # Yeşil
-        WARN        = (251, 191, 36)   # Amber
-        DANGER      = (248, 113, 113)  # Kırmızı
-        DANGER_DEEP = (60, 22, 30)     # Koyu kırmızı zemin
-        VIOLET      = (167, 139, 250)  # Mor
+        BG_DEEP     = (10, 14, 22)
+        HEADER_BG   = (14, 19, 30)
+        PANEL       = (18, 24, 36)
+        PANEL_2     = (23, 30, 45)
+        PANEL_INSET = (11, 15, 24)
+        BORDER      = (38, 48, 68)
+        BORDER_HI   = (58, 74, 102)
+        TEXT        = (226, 232, 244)
+        TEXT_DIM    = (140, 152, 174)
+        TEXT_MUTE   = (86, 98, 120)
+        ACCENT      = (56, 189, 248)
+        TEAL        = (45, 212, 191)
+        OK          = (52, 211, 153)
+        WARN        = (251, 191, 36)
+        DANGER      = (248, 113, 113)
+        DANGER_DEEP = (60, 22, 30)
+        VIOLET      = (167, 139, 250)
 
         def sh(c, d):
             return tuple(max(0, min(255, x + d)) for x in c)
@@ -469,7 +422,6 @@ class DroneSimulator:
         def lerp(a, b, t):
             return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
-        # ---- Yazı Tipleri ----
         UI = "Helvetica Neue,Segoe UI,Arial"
         MONO = "Menlo,Consolas,Courier New"
         try:
@@ -487,16 +439,14 @@ class DroneSimulator:
             f_h1 = f_title = f_body = f_body_b = f_small = pygame.font.SysFont("Courier", 14, bold=True)
             f_stat = f_statlbl = f_mono = f_mono_b = f_tick = pygame.font.SysFont("Courier", 12)
 
-        # ---- Layout Sabitleri ----
         HEAD_H = 54
-        PANEL_W = 430                 # Sol kontrol paneli genişliği
-        VP_X, VP_Y = PANEL_W, HEAD_H  # Simülasyon görüntü alanı
+        PANEL_W = 430
+        VP_X, VP_Y = PANEL_W, HEAD_H
         VP_W, VP_H = WIDTH - PANEL_W, HEIGHT - HEAD_H
         center_x = VP_X + VP_W // 2
         ground_y = 636
         scale_x, scale_y = 6.0, 9.0
 
-        # ---- Buton / Etkileşim Alanları ----
         btn_voice  = pygame.Rect(26, 150, 182, 36)
         btn_key    = pygame.Rect(216, 150, 182, 36)
         textbox_rect = pygame.Rect(28, 246, 300, 34)
@@ -504,17 +454,14 @@ class DroneSimulator:
         btn_reboot = pygame.Rect(28, 682, 374, 40)
         btn_abort  = pygame.Rect(28, 730, 374, 42)
 
-        # ---- Degrade Gökyüzü (bir kez hesapla) ----
         sky_h = ground_y - VP_Y
         sky_surface = pygame.Surface((VP_W, sky_h))
         for i in range(sky_h):
             sky_surface.fill(lerp((12, 16, 26), (24, 33, 50), i / sky_h), (0, i, VP_W, 1))
 
-        # ---- Vinyet (kenarları karartan sinematik derinlik) ----
         vignette = pygame.Surface((VP_W, VP_H), pygame.SRCALPHA)
         vcx, vcy = VP_W / 2, VP_H * 0.42
         vmax = math.hypot(vcx, vcy)
-        # Yumuşak radyal vinyet — köşelere doğru koyulaşan alfa
         for yy in range(0, VP_H, 3):
             d = abs(yy - vcy) / vmax
             a = int(120 * max(0, d - 0.15) ** 1.4)
@@ -526,12 +473,10 @@ class DroneSimulator:
             if a > 0:
                 pygame.draw.rect(vignette, (4, 7, 12, a), (xx, 0, 3, VP_H))
 
-        # ---- Başlık çubuğu degrade (bir kez hesapla) ----
         header_surface = pygame.Surface((WIDTH, HEAD_H))
         for i in range(HEAD_H):
             header_surface.fill(lerp((20, 27, 42), (13, 18, 28), i / HEAD_H), (0, i, WIDTH, 1))
 
-        # ---- Geofence parlama şeridi (bir kez hesapla) ----
         fence_h = ground_y - 100
         fence_glow = pygame.Surface((22, fence_h), pygame.SRCALPHA)
         for cx in range(22):
@@ -539,7 +484,6 @@ class DroneSimulator:
             if a > 0:
                 pygame.draw.line(fence_glow, (*DANGER, a), (cx, 0), (cx, fence_h))
 
-        # ---- Glow (parlama) — additive yumuşak ışık ----
         _glow_cache = {}
         def glow(cx, cy, radius, color, max_alpha=45):
             key = (radius, color, max_alpha)
@@ -552,7 +496,6 @@ class DroneSimulator:
                 _glow_cache[key] = gs
             screen.blit(gs, (int(cx - radius), int(cy - radius)), special_flags=pygame.BLEND_RGB_ADD)
 
-        # ---- Yardımcı Çizim Fonksiyonları ----
         _shadow_cache = {}
         def panel_shadow(rect, radius=12):
             key = (rect.width, rect.height, radius)
@@ -679,19 +622,14 @@ class DroneSimulator:
 
             screen.fill(BG_DEEP)
 
-            # ============================================================
-            #  S I M U L A S Y O N   G O R U N T U   A L A N I
-            # ============================================================
             screen.blit(sky_surface, (VP_X, VP_Y))
 
-            # İnce koordinat ızgarası
             grid_c = (24, 32, 48)
             for gx in range(VP_X, WIDTH, 48):
                 pygame.draw.line(screen, grid_c, (gx, VP_Y), (gx, ground_y), 1)
             for gy in range(VP_Y, ground_y, 48):
                 pygame.draw.line(screen, grid_c, (VP_X, gy), (WIDTH, gy), 1)
 
-            # Sinematik vinyet (sky + grid üzerine, enstrümanların altına)
             screen.blit(vignette, (VP_X, VP_Y))
 
             drone_px = center_x + int(self.x * scale_x)
@@ -699,7 +637,6 @@ class DroneSimulator:
             target_px = center_x + int(self.target_x * scale_x)
             target_py = ground_y - int(self.target_y * scale_y)
 
-            # --- Pusula bandı (üst) ---
             comp = pygame.Rect(center_x - 400, 68, 800, 26)
             pygame.draw.rect(screen, (14, 20, 32), comp, border_radius=6)
             pygame.draw.rect(screen, BORDER, comp, 1, border_radius=6)
@@ -713,7 +650,6 @@ class DroneSimulator:
                         screen.blit(tl, tl.get_rect(center=(tx, 87)))
             pygame.draw.polygon(screen, ACCENT, [(center_x, 66), (center_x - 5, 60), (center_x + 5, 60)])
 
-            # --- İrtifa bandı (sol) ---
             alt_g = pygame.Rect(446, 112, 26, 376)
             pygame.draw.rect(screen, (14, 20, 32), alt_g, border_radius=6)
             pygame.draw.rect(screen, BORDER, alt_g, 1, border_radius=6)
@@ -726,7 +662,6 @@ class DroneSimulator:
                         screen.blit(f_tick.render(str(alt_val), True, TEXT_MUTE), (458, ty - 6))
             pygame.draw.polygon(screen, ACCENT, [(440, 300), (446, 296), (446, 304)])
 
-            # --- Batarya bandı (sağ) ---
             bat_g = pygame.Rect(WIDTH - 40, 112, 26, 376)
             pygame.draw.rect(screen, (14, 20, 32), bat_g, border_radius=6)
             pygame.draw.rect(screen, BORDER, bat_g, 1, border_radius=6)
@@ -741,7 +676,6 @@ class DroneSimulator:
                 lb = f_tick.render(f"{bt}", True, TEXT_MUTE)
                 screen.blit(lb, lb.get_rect(right=bat_g.x - 4, centery=ty))
 
-            # --- Attitude / pitch ladder (merkez) ---
             lcx, lcy = center_x, 290
             pygame.draw.line(screen, ACCENT, (lcx - 22, lcy), (lcx - 7, lcy), 2)
             pygame.draw.line(screen, ACCENT, (lcx + 7, lcy), (lcx + 22, lcy), 2)
@@ -767,13 +701,11 @@ class DroneSimulator:
                 vs = f_tick.render(str(abs(pl)), True, lc)
                 screen.blit(vs, (rx + 6, ry - 6))
 
-            # --- Zemin / pist ---
             pygame.draw.rect(screen, (16, 21, 30), (VP_X, ground_y, VP_W, HEIGHT - ground_y))
             pygame.draw.line(screen, ACCENT, (VP_X, ground_y), (WIDTH, ground_y), 2)
             for mx in range(VP_X + 25, WIDTH, 80):
                 pygame.draw.line(screen, (70, 82, 100), (mx, ground_y), (mx + 34, ground_y), 1)
 
-            # --- Geofence sınırları ---
             fp = int(3 * math.sin(time.time() * 4.0))
             sol_f = center_x - int(50 * scale_x)
             sag_f = center_x + int(50 * scale_x)
@@ -782,7 +714,6 @@ class DroneSimulator:
                 pygame.draw.line(screen, DANGER, (fx, 100), (fx, ground_y), 2)
                 pygame.draw.line(screen, sh(DANGER_DEEP, 60), (fx + off * (5 + fp), 100), (fx + off * (5 + fp), ground_y), 1)
 
-            # --- Uçuş rota izi (parlayan) ---
             if hasattr(self, "trail_history") and len(self.trail_history) > 1:
                 n = len(self.trail_history)
                 for i in range(1, n):
@@ -791,10 +722,8 @@ class DroneSimulator:
                     p1 = (center_x + int(a[0] * scale_x), ground_y - int(a[1] * scale_y))
                     p2 = (center_x + int(b[0] * scale_x), ground_y - int(b[1] * scale_y))
                     pygame.draw.line(screen, lerp((16, 24, 38), ACCENT, i / n), p1, p2, 3)
-                # iz başında yumuşak parlama
                 glow(p2[0], p2[1], 14, ACCENT, max_alpha=45)
 
-            # --- İrtifa dikey projeksiyon kılavuzu ---
             if self.in_air or self.y > 0.0:
                 for py in range(drone_py, ground_y, 10):
                     if (py // 5) % 2 == 0:
@@ -802,7 +731,6 @@ class DroneSimulator:
                 asf = f_tick.render(f"{self.y:.1f}m", True, WARN)
                 screen.blit(asf, (drone_px + 10, drone_py + (ground_y - drone_py) // 2))
 
-            # --- Hedef kilit nişangahı ---
             if self.in_air or self.target_y > 0.0:
                 pulse = int(4 * math.sin(time.time() * 6.0))
                 glow(target_px, target_py, 22, OK, max_alpha=34)
@@ -814,7 +742,6 @@ class DroneSimulator:
                     pygame.draw.line(screen, OK, (cx, cy), (cx - dx * 4, cy), 2)
                     pygame.draw.line(screen, OK, (cx, cy), (cx, cy - dy * 4), 2)
 
-            # --- Quadcopter render ---
             cos_t, sin_t = math.cos(-self.theta), math.sin(-self.theta)
             la_x = drone_px - int(35 * cos_t)
             la_y = drone_py - int(35 * sin_t)
@@ -861,9 +788,6 @@ class DroneSimulator:
             pygame.draw.line(screen, (220, 220, 220), (mrt[0] - p3x, mrt[1] - p3y), (mrt[0] + p3x, mrt[1] + p3y), 2)
             pygame.draw.line(screen, (150, 150, 150), (mrt[0] - p4x, mrt[1] - p4y), (mrt[0] + p4x, mrt[1] + p4y), 1)
 
-            # ============================================================
-            #  A L T   T E L E M E T R I   K O N S O L U
-            # ============================================================
             tbar = pygame.Rect(VP_X + 8, 690, VP_W - 24, 102)
             draw_panel(tbar, fill=PANEL, border=BORDER, radius=12)
             panel_header(tbar.x + 12, tbar.y + 10, "Canlı Telemetri")
@@ -882,19 +806,14 @@ class DroneSimulator:
             for i, (lbl, val, acc) in enumerate(tiles):
                 stat_tile(tbar.x + 12 + i * (tw + 8), tbar.y + 30, tw, 60, lbl, val, acc)
 
-            # ============================================================
-            #  U S T   B A S L I K   C U B U G U
-            # ============================================================
             screen.blit(header_surface, (0, 0))
             pygame.draw.line(screen, BORDER, (0, HEAD_H), (WIDTH, HEAD_H), 1)
             pygame.draw.line(screen, sh(ACCENT, -110), (0, HEAD_H + 1), (WIDTH, HEAD_H + 1), 1)
-            # Logo işareti (rotor)
             pygame.draw.circle(screen, ACCENT, (26, 27), 9, 2)
             for a in range(4):
                 ang = math.radians(a * 90 + 45)
                 pygame.draw.circle(screen, ACCENT, (26 + int(11 * math.cos(ang)), 27 + int(11 * math.sin(ang))), 2)
             screen.blit(f_h1.render("İHA YER KONTROL İSTASYONU", True, TEXT), (48, 17))
-            # Mod rozeti
             mode_c = DANGER if self.failsafe else (OK if self.in_air else ACCENT)
             mtxt = f_small.render(self.mode, True, mode_c)
             mbadge = pygame.Rect(372, 15, mtxt.get_width() + 26, 24)
@@ -902,7 +821,6 @@ class DroneSimulator:
             pygame.draw.rect(screen, mode_c, mbadge, 1, border_radius=12)
             pygame.draw.circle(screen, mode_c, (mbadge.x + 13, mbadge.centery), 4)
             screen.blit(mtxt, (mbadge.x + 22, mbadge.centery - mtxt.get_height() // 2))
-            # Sağ küme: bağlantı + sinyal + saat
             hb_flash = (time.time() * 3.0) % 2 < 1.0
             clock_txt = time.strftime("%H:%M:%S")
             cs = f_mono_b.render(clock_txt, True, TEXT_DIM)
@@ -916,13 +834,9 @@ class DroneSimulator:
                 pygame.draw.circle(screen, OK, (sig_x - 66, 27), 8, 1)
             screen.blit(f_small.render("BAĞLANTI", True, TEXT_DIM), (sig_x - 54, 20))
 
-            # ============================================================
-            #  S O L   K O N T R O L   P A N E L I
-            # ============================================================
             pygame.draw.rect(screen, (13, 18, 28), (0, HEAD_H, PANEL_W, HEIGHT - HEAD_H))
             pygame.draw.line(screen, BORDER, (PANEL_W, HEAD_H), (PANEL_W, HEIGHT), 1)
 
-            # --- Kart 1: Giriş modu ---
             card1 = pygame.Rect(14, 66, 402, 132)
             draw_panel(card1)
             panel_header(28, 78, "Komut Giriş Modu")
@@ -941,7 +855,6 @@ class DroneSimulator:
             draw_button(btn_key, "KLAVYE", ACCENT if k_active else PANEL_2, TEXT if k_active else TEXT_DIM,
                         hover_key, accent=ACCENT if k_active else None, active=k_active)
 
-            # --- Kart 2: Komut konsolu ---
             card2 = pygame.Rect(14, 208, 402, 82)
             draw_panel(card2)
             panel_header(28, 216, "Komut Konsolu")
@@ -953,7 +866,6 @@ class DroneSimulator:
             if self.input_text:
                 tc = TEXT if self.input_mode == "keyboard" else TEXT_MUTE
                 tsf = f_body.render(self.input_text, True, tc)
-                # Metin uzadıkça sola kaydır: her zaman sonu (imleci) göster
                 scroll = max(0, tsf.get_width() - tb_avail)
                 prev_clip = screen.get_clip()
                 screen.set_clip(textbox_rect.inflate(-6, -4))
@@ -972,7 +884,6 @@ class DroneSimulator:
             draw_button(btn_send, "GÖNDER", OK if send_on else PANEL_2, TEXT if send_on else TEXT_MUTE,
                         hover_send and send_on, accent=OK if send_on else None)
 
-            # --- Kart 3: Event günlüğü ---
             card3 = pygame.Rect(14, 296, 402, 336)
             draw_panel(card3)
             panel_header(28, 306, "Sistem Event Günlüğü")
@@ -1000,7 +911,6 @@ class DroneSimulator:
                 screen.blit(f_mono.render(wl, True, c), (34, ly))
                 ly += 22
 
-            # --- Kart 4: Kritik eylem konsolu ---
             card4 = pygame.Rect(14, 642, 402, 142)
             fill4 = DANGER_DEEP if self.failsafe else PANEL
             draw_panel(card4, fill=fill4, border=DANGER if self.failsafe else BORDER)
@@ -1010,7 +920,6 @@ class DroneSimulator:
 
             pygame.display.flip()
 
-        # Pencere kapanırken tamponda bekleyen telemetri örneklerini kaybetme
         if self.recorder is not None:
             self.recorder.close()
 
@@ -1025,7 +934,6 @@ class DroneSimulator:
         self.logger.log_action(self.session_id, "reboot", "reboot", None, True, sonuc)
         self.status_message = "HAZIR"
 
-# Global simülatör nesnesi
 global_simulator = DroneSimulator()
 
 def start_simulator_thread():

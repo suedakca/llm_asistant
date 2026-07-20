@@ -33,7 +33,7 @@ class ProjectLogger:
             print(f"[LOG HATASI] Yazma başarısız: {e}")
 
     def print_session_summary(self, session_id, final_telemetry):
-        """ [DÜZELTME] Sadece son durumu değil, loglardan ulaşılan EN YÜKSEK İRTİFAYI hesaplar """
+        """ Oturum özet raporunu hesaplar ve ekrana yazdırır. """
         try:
             session_logs = []
             max_altitude_reached = 0.0 

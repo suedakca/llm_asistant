@@ -1,7 +1,5 @@
 # security.py
 
-# Güvenlik katmanının tanıdığı ve çalıştırabileceği eylemler.
-# LLM bunun dışında bir şey üretirse komut zinciri reddedilir.
 ALLOWED_ACTIONS = {
     "takeoff",
     "land",
@@ -14,8 +12,7 @@ ALLOWED_ACTIONS = {
 
 
 def _to_float(value):
-    """ LLM'den gelen sayısal parametreyi güvenle float'a çevirir.
-        Çevrilemiyorsa None döner (çağıran taraf güvenlik reddi üretir). """
+    """ LLM'den gelen sayısal parametreyi güvenle float'a çevirir. """
     if isinstance(value, bool) or value is None:
         return None
     try:
@@ -38,8 +35,6 @@ class SecurityLayer:
         if telemetri["failsafe"]:
             return False, "Sistem Failsafe modunda kilitli!"
 
-        # ARIZA DENETİMİ: bozulmuş sensör/donanım durumunda hangi eylemlerin
-        # güvenli olmadığına arıza modülü karar verir (iniş her zaman serbest).
         faults = getattr(drone, "faults", None)
         if faults is not None:
             ariza_engeli = faults.blocking_reason(action, telemetri)
@@ -56,22 +51,17 @@ class SecurityLayer:
         current_battery = telemetri["battery"]
         current_wind = telemetri.get("wind_speed", 0.0)
 
-        # -1. TANINMAYAN EYLEM KONTROLÜ
-        # Haritalanamayan bir eylem asla "onaylandı" olarak dönmemelidir.
         if action not in ALLOWED_ACTIONS:
             return True, f"Tanınmayan eylem: '{action}'. Desteklenen eylemler: {', '.join(sorted(ALLOWED_ACTIONS))}."
 
-        # 0. RÜZGAR HIZI KONTROLÜ (TAKEOFF VEYA MOVE İÇİN)
         if action in ["takeoff", "move"]:
             if current_wind > self.max_wind_speed:
                 return True, f"RÜZGAR ENGELİ: Anlık rüzgar hızı ({current_wind} km/s) güvenli uçuş limitini ({self.max_wind_speed} km/s) aşmaktadır! Uçuş gerçekleştirilemez."
 
-        # 1. KRİTİK BATARYA KONTROLÜ
         if current_battery < self.critical_battery:
             if action not in ["land", "return_to_home", "get_telemetry"]:
                 return True, f"Batarya kritik seviyede (%{current_battery}). Yalnızca iniş veya RTH yapabilirsiniz!"
 
-        # 2. DİNAMİK İRTİFA SINIRI BELİRLEME
         if current_battery < 50: 
             aktif_maks_irtifa = self.low_battery_max_altitude  
             batarya_notu = f"Batarya %50'nin altında (%{current_battery}) olduğu için limit {aktif_maks_irtifa}m'dir."
@@ -79,7 +69,6 @@ class SecurityLayer:
             aktif_maks_irtifa = self.base_max_altitude         
             batarya_notu = f"Maksimum güvenli uçuş sınırı {aktif_maks_irtifa}m'dir."
 
-        # 3. TAKEOFF / YÜKSELME VALIDASYONU
         if action == "takeoff":
             if not telemetri["in_air"] and not telemetri["checklist_completed"]:
                 return True, "Kalkış öncesi kontrol listesi (Pre-flight Checklist) onaylanmadı! Kalkış yapabilmek için lütfen kalkış öncesi kontrolleri onaylayın (Örn: 'kontroller tamam').\nKontroller: 1. Pervaneler sağlam mı? 2. GPS kilitlendi mi? 3. Çevre uçuşa güvenli mi?"
@@ -91,7 +80,6 @@ class SecurityLayer:
             if hedef_mutlak_irtifa > aktif_maks_irtifa: 
                 return True, f"{batarya_notu} İstenen yükseklik ({hedef_mutlak_irtifa}m) sınırı aşmaktadır!"
 
-        # 4. MOVE VE GEOFENCE KONTROLÜ
         if action == "move":
             if not telemetri["in_air"]: return True, "Yerdeyken yatay hareket yapılamaz."
             if not isinstance(parameter, dict) or "direction" not in parameter or "distance" not in parameter:
@@ -124,7 +112,6 @@ class SecurityLayer:
             if abs(target_x) > self.geofence_boundary or abs(target_y) > self.geofence_boundary:
                 return True, f"GEOFENCE İHLALİ! Hedef konum (X: {target_x}, Y: {target_y}) sanal sınırı ({self.geofence_boundary}m) aşmaktadır."
 
-        # 5. SET_HOME VALIDASYONU
         if action == "set_home":
             if telemetri["in_air"]: 
                 return True, "Havada iken ev konumu değiştirilemez!"
@@ -138,7 +125,6 @@ class SecurityLayer:
             if abs(hx) > self.geofence_boundary or abs(hy) > self.geofence_boundary:
                 return True, f"Belirlenen ev konumu Geofence sınırlarının ({self.geofence_boundary}m) dışındadır!"
 
-        # 6. UÇUŞ DURUMU İSTİSNALARI
         if action in ["land", "return_to_home"] and not telemetri["in_air"]:
             return True, "Araç zaten havada değil, bu işlem gerçekleştirilemez."
 
@@ -149,7 +135,6 @@ class SecurityLayer:
         return False, None
 
     def _execute_action(self, drone, action, parameter):
-        # Gerçek Çalıştırma Kodları Eksiksiz Geri Getirildi
         if action == "takeoff":
             return drone.takeoff(float(parameter))
 
