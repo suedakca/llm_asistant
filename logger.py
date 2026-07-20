@@ -12,7 +12,7 @@ class ProjectLogger:
                 with open(self.filename, "r", encoding="utf-8") as f:
                     first_char = f.read(1)
                 if first_char == "[":
-                    print("⚠️ [SİSTEM] Eski log formatı algılandı. Dosya JSONLines formatına sıfırlanıyor...")
+                    print("[SİSTEM] Eski log formatı algılandı. Dosya JSONLines formatına sıfırlanıyor...")
                     os.remove(self.filename)
             except:
                 pass
@@ -66,16 +66,16 @@ class ProjectLogger:
             rejected = total - approved
 
             print("\n" + "="*50)
-            print("📊 === BU OTURUMA AİT UÇUŞ ÖZET RAPORU ===")
+            print("=== BU OTURUMA AİT UÇUŞ ÖZET RAPORU ===")
             print("="*50)
-            print(f"🆔 Oturum Kimliği (UUID)   : {session_id}")
-            print(f"🔹 Bu Oturumdaki Komutlar  : {total}")
-            print(f"✅ Onaylanan Eylemler     : {approved}")
-            print(f"❌ Reddedilen Güvensiz    : {rejected}")
-            print(f"📈 Ulaşılan En Yüksek İrtifa: {max_altitude_reached}m ") 
-            print(f"📉 Kapanış Anındaki İrtifa : {final_telemetry['altitude']}m")
-            print(f"📍 Son Konum Koordinatı   : (X: {final_telemetry['x']}, Y: {final_telemetry['y']})")
-            print(f"🔋 Kalan Batarya Seviyesi : %{final_telemetry['battery']}")
+            print(f"Oturum Kimliği (UUID)   : {session_id}")
+            print(f"Bu Oturumdaki Komutlar  : {total}")
+            print(f"Onaylanan Eylemler     : {approved}")
+            print(f"Reddedilen Güvensiz    : {rejected}")
+            print(f"Ulaşılan En Yüksek İrtifa: {max_altitude_reached}m ") 
+            print(f"Kapanış Anındaki İrtifa : {final_telemetry['altitude']}m")
+            print(f"Son Konum Koordinatı   : (X: {final_telemetry['x']}, Y: {final_telemetry['y']})")
+            print(f"Kalan Batarya Seviyesi : %{final_telemetry['battery']}")
             print("="*50 + "\n")
         except Exception as e:
             print(f"Özet raporlama hatası: {e}")

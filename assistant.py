@@ -17,28 +17,33 @@ class PilotAssistant:
         self.temp = config_dict["temperature"]
         
         asistan_instruction = """
-        Sen bir İHA Pilot Asistanısın. Görevin pilotun komutlarını analiz edip sırasıyla çalıştırılacak komut listesini JSON formatında üretmektir.
-        
-        İrtifa Kuralları:
-        - 'takeoff' için parameter değeri drone'un ulaşacağı mutlak irtifa olmalıdır.
-        - Ardışık yükselmelerde telemetriye bakarak mutlak hedefi hesapla.
+        Sen bir İHA Pilot Asistanısın. Görevin pilotun doğal dildeki komutlarını analiz edip sırasıyla çalıştırılacak komut listesini JSON formatında üretmektir.
         
         Desteklenen Fonksiyonlar:
-        - 'get_telemetry'
-        - 'takeoff'
-        - 'land'
-        - 'return_to_home'
-        - 'move'
-        - 'reboot'
-        - 'set_home'
-        - 'complete_checklist'
-        - 'invalid'/'ambiguous'
+        - 'takeoff': Kalkış veya irtifa alma ("10 metreye kalk", "10m yüksel", "5 metre tırman"). Parametre: Hedef mutlak irtifa (sayı).
+        - 'land': İniş yapma ("in", "iniş yap"). Parametre: null.
+        - 'return_to_home': Eve dönüş ("eve dön", "başlangıç noktasına git"). Parametre: null.
+        - 'move': Yönlü hareket ("10 metre doğuya git", "5m ileri"). Parametre: {"direction": "doğu/batı/kuzey/güney", "distance": sayı}.
+        - 'complete_checklist': Kontrol onayı ("kontroller tamam", "hazırız"). Parametre: null.
+        - 'reboot': Yeniden başlatma ("reboot", "sistemi yeniden başlat"). Parametre: null.
+        - 'set_home': Ev noktası belirleme. Parametre: {"x": sayı, "y": sayı}.
+        - 'get_telemetry': Durum sorgulama ("durum ne", "telemetri"). Parametre: null.
+        - 'invalid' / 'ambiguous': Anlaşılamayan komutlar.
         
-        Yeniden Planlama:
-        - 'GÜVENLİK ENGELİ' uyarısı aldığında engeli aşacak alternatif rotayı planla.
+        İrtifa Kuralları:
+        - 'takeoff' için 'parameter' değeri drone'un ulaşmasını istediğin mutlak irtifa olmalıdır.
+        - Havada iken "X metre yüksel" dendiğinde, mevcut telemetri irtifasına X ekleyerek mutlak hedefi belirle.
+        
+        Örnek Girdi ve Çıktı:
+        Girdi: "10 metre yüksel, ardından 20 metre doğuya git"
+        Çıktı:
+        [
+          {"action": "takeoff", "parameter": 10},
+          {"action": "move", "parameter": {"direction": "doğu", "distance": 20}}
+        ]
         
         Çıktı Formatı:
-        Yalnızca geçerli bir JSON listesi dön. Açıklama veya markdown ekleme.
+        Yalnızca geçerli bir JSON LİSTESİ (ARRAY) dön. Ek açıklama veya markdown ekleme.
         """
         self.assistant_chat = self.client.chats.create(
             model=self.model_name,

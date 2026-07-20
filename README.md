@@ -68,11 +68,13 @@ python3 radar.py
 
 ---
 
-## Örnek Komutlar ve Kalkış Adımları
+## Örnek Komutlar ve Uçuş Adımları
 
-1. **Kontrol Listesi:** `kontroller tamam`
-2. **Kalkış:** `10 metreye kalk`
-3. **Manevra:** `10 metre ileri git, sonra 5 metre sağa git`
+İlk kalkış öncesinde güvenlik gereği kontrol listesinin onaylanması zorunludur:
+
+1. **Kontrol Listesi Onayı (Zorunlu):** `kontroller tamam` veya `hazırız`
+2. **Kalkış Yapma:** `10 metreye kalk` veya `10 metre yüksel`
+3. **Manevra / Hareket:** `10 metre ileri git, sonra 5 metre sağa git`
 4. **Eve Dönüş / İniş:** `eve dön` veya `in`
 5. **Acil Durum:** `ABORT` veya `ACİL DURDURMA` (LLM bypass edilerek anında motor kesilir)
 

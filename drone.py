@@ -51,12 +51,12 @@ class Drone:
                     print(f"🔗 [MAVLINK] {connection_string} adresine bağlanılıyor...")
                     self.mavlink_conn = mavutil.mavlink_connection(connection_string)
                     self.mavlink_conn.wait_heartbeat(timeout=2.0)
-                    print("✅ [MAVLINK] Bağlantı başarılı! Kalp atışı (heartbeat) alındı.")
+                    print("[MAVLINK] Bağlantı başarılı! Kalp atışı (heartbeat) alındı.")
                 except Exception as e:
-                    print(f"⚠️ [MAVLINK BAĞLANTI UYARISI]: {e}. Yerel simülasyona geçildi.")
+                    print(f"[MAVLINK BAĞLANTI UYARISI]: {e}. Yerel simülasyona geçildi.")
                     self.mavlink_enabled = False
             else:
-                print("⚠️ [MAVLINK UYARISI]: 'pymavlink' kütüphanesi yüklü değil! Yerel simülasyona geçildi.")
+                print("[MAVLINK UYARISI]: 'pymavlink' kütüphanesi yüklü değil! Yerel simülasyona geçildi.")
                 self.mavlink_enabled = False
 
     def _update_battery_consumption(self):

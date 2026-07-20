@@ -14,28 +14,28 @@ def get_voice_input():
     try:
         mic = sr.Microphone()
     except (AttributeError, OSError) as e:
-        print(f"❌ [SİSTEM] Sesli komut kullanılamıyor: {e}")
+        print(f"[SİSTEM] Sesli komut kullanılamıyor: {e}")
         print("   'pip3 install pyaudio' ile kurabilirsiniz. Şimdilik klavye (K) kullanın.")
         return ""
 
     with mic as source:
-        print("\n🎤 [MİKROFON] Dinleniyor... Konuşun...")
+        print("\n[MİKROFON] Dinleniyor... Konuşun...")
         r.adjust_for_ambient_noise(source, duration=0.5)
         try:
             audio = r.listen(source, timeout=5, phrase_time_limit=20)
-            print("⏳ [SİSTEM] Ses işleniyor, metne dökülüyor...")
+            print("[SİSTEM] Ses işleniyor, metne dökülüyor...")
 
             text = r.recognize_google(audio, language="tr-TR")
-            print(f"🗣️  [SESLİ KOMUT ALGILANDI]: \"{text}\"")
+            print(f"[SESLİ KOMUT ALGILANDI]: \"{text}\"")
             return text
         except sr.WaitTimeoutError:
-            print("❌ [SİSTEM] Zaman aşımı: Herhangi bir ses algılanmadı.")
+            print("[SİSTEM] Zaman aşımı: Herhangi bir ses algılanmadı.")
             return ""
         except sr.UnknownValueError:
-            print("❌ [SİSTEM] Ses anlaşılamadı, lütfen tekrar deneyin.")
+            print("[SİSTEM] Ses anlaşılamadı, lütfen tekrar deneyin.")
             return ""
         except sr.RequestError as e:
-            print(f"❌ [SİSTEM] Google STT Servis Hatası: {e}")
+            print(f"[SİSTEM] Google STT Servis Hatası: {e}")
             return ""
 
 def run_command_loop(drone, security, assistant, logger, config, session_id, simulator=None):
@@ -44,8 +44,8 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
     high_risk_list = config["llm_settings"]["high_risk_actions"]
 
     print(f"=== SİSTEM AKTİF | OTURUM ID: {session_id} ===")
-    print("⌨️  Klavyeden yazmak için komut satırını kullanın.")
-    print("🎙️  Sesli komut moduna geçmek için mikrofona konuşma tetiklerini kullanabilirsiniz.")
+    print("Klavyeden yazmak için komut satırını kullanın.")
+    print("Sesli komut moduna geçmek için mikrofona konuşma tetiklerini kullanabilirsiniz.")
 
     while True:
         giriş_tipi = input("\nGiriş Yöntemi [K: Klavye / S: Sesli Komut / Ç: Çıkış]: ").lower().strip()
@@ -63,7 +63,7 @@ def run_command_loop(drone, security, assistant, logger, config, session_id, sim
         elif giriş_tipi == "k":
             user_command = input("Pilot Mesajı (Klavye): ")
         else:
-            print("⚠️ Geçersiz seçim. Lütfen K, S veya Ç girin.")
+            print("Geçersiz seçim. Lütfen K, S veya Ç girin.")
             continue
 
         if not user_command.strip():
@@ -192,7 +192,7 @@ def main():
     from simulator import global_simulator
     global_simulator.init_gui_control(drone, security, assistant, logger, config, session_id)
 
-    print("🎮 [SİSTEM] Arayüz Destekli Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
+    print("[SİSTEM] Arayüz Destekli Pygame 2B Fizik Simülatörü başlatıldı (ana thread).")
     global_simulator.run_pygame()
 
 
